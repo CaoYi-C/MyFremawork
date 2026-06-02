@@ -37,13 +37,47 @@ namespace Fuel.Tools
             /// 是否已取消
             /// </summary>
             public bool Cancelled;
+
+            /// <summary>
+            /// 重置为初始状态以便复用
+            /// </summary>
+            public void Reset()
+            {
+                Id = 0;
+                Interval = 0f;
+                Elapsed = 0f;
+                Callback = null;
+                RepeatCount = 0;
+                ExecutedCount = 0;
+                Cancelled = false;
+            }
         }
 
         private readonly Dictionary<int, TimerTask> _timers = new Dictionary<int, TimerTask>();
-
         private readonly List<int> _removeList = new List<int>();
 
+        // TimerTask 对象池，避免每次 AddTimer 都 new
+        private readonly Stack<TimerTask> _taskPool = new Stack<TimerTask>();
+        private const int MaxPoolSize = 64;
+
         private int _timerId = 0;
+
+        // 缓存 Dictionary values 用于遍历，避免 foreach Dictionary 迭代器分配
+        private readonly List<TimerTask> _iterationCache = new List<TimerTask>();
+
+        private TimerTask RentTask()
+        {
+            return _taskPool.Count > 0 ? _taskPool.Pop() : new TimerTask();
+        }
+
+        private void ReturnTask(TimerTask task)
+        {
+            if (_taskPool.Count < MaxPoolSize)
+            {
+                task.Reset();
+                _taskPool.Push(task);
+            }
+        }
 
         /// <summary>
         /// 创建一个定时器
@@ -70,16 +104,14 @@ namespace Fuel.Tools
 
             int id = ++_timerId;
 
-            TimerTask task = new TimerTask
-            {
-                Id = id,
-                Interval = interval,
-                Elapsed = 0f,
-                Callback = callback,
-                RepeatCount = repeatCount,
-                ExecutedCount = 0,
-                Cancelled = false
-            };
+            TimerTask task = RentTask();
+            task.Id = id;
+            task.Interval = interval;
+            task.Elapsed = 0f;
+            task.Callback = callback;
+            task.RepeatCount = repeatCount;
+            task.ExecutedCount = 0;
+            task.Cancelled = false;
 
             _timers.Add(id, task);
 
@@ -137,12 +169,18 @@ namespace Fuel.Tools
         /// </summary>
         public void ClearAll()
         {
+            foreach (var pair in _timers)
+            {
+                ReturnTask(pair.Value);
+            }
             _timers.Clear();
             _removeList.Clear();
+            _iterationCache.Clear();
         }
 
         /// <summary>
         /// Update 驱动，所有时间累计都在这里
+        /// 使用缓存 List 遍历替代 Dictionary foreach，避免迭代器 GC 分配
         /// </summary>
         /// <param name="deltaTime">每帧间隔时间，单位秒</param>
         public void Update(float deltaTime)
@@ -152,9 +190,16 @@ namespace Fuel.Tools
 
             _removeList.Clear();
 
+            // 将 values 拷贝到缓存 List 中遍历，避免 Dictionary enumerator 分配
+            _iterationCache.Clear();
             foreach (var pair in _timers)
             {
-                TimerTask task = pair.Value;
+                _iterationCache.Add(pair.Value);
+            }
+
+            for (int idx = 0; idx < _iterationCache.Count; idx++)
+            {
+                TimerTask task = _iterationCache[idx];
 
                 if (task.Cancelled)
                 {
@@ -195,7 +240,12 @@ namespace Fuel.Tools
 
             for (int i = 0; i < _removeList.Count; i++)
             {
-                _timers.Remove(_removeList[i]);
+                int removeId = _removeList[i];
+                if (_timers.TryGetValue(removeId, out TimerTask removedTask))
+                {
+                    _timers.Remove(removeId);
+                    ReturnTask(removedTask);
+                }
             }
         }
     }

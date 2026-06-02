@@ -110,34 +110,42 @@ namespace Fuel.AssetManager.AssetsPools
             if (_loadCallBackMap.ContainsKey(groupName) == false)
                 _loadCallBackMap[groupName] = new Dictionary<long, LoadCallBack<T>>();
             _loadCallBackMap[groupName].Add(loadData.LoadIndex,loadData);
-            GetAsyncAction(path, loadData.LoadIndex, groupName,LoadCallBack);
+            GetAsyncAction(path, loadData.LoadIndex, groupName,LoadCallBack).Forget();
         }
         
-        private async void GetAsyncAction(string path, long index, string groupName, Action<long,T,string> action)
+        private async UniTaskVoid GetAsyncAction(string path, long index, string groupName, Action<long,T,string> action)
         {
-            if (_groupPoos.TryGetValue(groupName, out var materialPools))
+            try
             {
-                if (materialPools.TryGetValue(path, out var pool))
+                if (_groupPoos.TryGetValue(groupName, out var materialPools))
                 {
-                    var mat = await pool.GetAsync(path, groupName);
-                    action.Invoke(index,mat,groupName);
+                    if (materialPools.TryGetValue(path, out var pool))
+                    {
+                        var mat = await pool.GetAsync(path, groupName);
+                        action.Invoke(index,mat,groupName);
+                    }
+                    else
+                    {
+                        pool = ObjectPools.Instance.Get<OtherPool<T>>();
+                        materialPools.Add(path, pool);
+                        var mat = await pool.GetAsync(path, groupName);
+                        action.Invoke(index,mat,groupName);
+                    }
                 }
                 else
                 {
-                    pool = ObjectPools.Instance.Get<OtherPool<T>>();
+                    materialPools = new Dictionary<string, OtherPool<T>>();
+                    var pool = ObjectPools.Instance.Get<OtherPool<T>>();
                     materialPools.Add(path, pool);
+                    _groupPoos.Add(groupName, materialPools);
                     var mat = await pool.GetAsync(path, groupName);
                     action.Invoke(index,mat,groupName);
                 }
             }
-            else
+            catch (Exception e)
             {
-                materialPools = new Dictionary<string, OtherPool<T>>();
-                var pool = ObjectPools.Instance.Get<OtherPool<T>>();
-                materialPools.Add(path, pool);
-                _groupPoos.Add(groupName, materialPools);
-                var mat = await pool.GetAsync(path, groupName);
-                action.Invoke(index,mat,groupName);
+                UnityEngine.Debug.LogError($"InstantiatePools async load failed: {e}");
+                action.Invoke(index, null, groupName);
             }
         }
         
@@ -208,7 +216,7 @@ namespace Fuel.AssetManager.AssetsPools
                     return;
                 }
             }
-            UnityEngine.Object.DestroyImmediate(mat);
+            DestroyObject(mat);
         }
 
         internal void RecycleByGroup(string groupName = "")
@@ -246,7 +254,16 @@ namespace Fuel.AssetManager.AssetsPools
             _groupPoos.Remove(groupName);
         }
 
-        protected  void OnDestroy()
+        private static void DestroyObject(UnityEngine.Object obj)
+        {
+            if (obj == null) return;
+            if (UnityEngine.Application.isPlaying)
+                UnityEngine.Object.Destroy(obj);
+            else
+                UnityEngine.Object.DestroyImmediate(obj);
+        }
+
+        protected void OnDestroy()
         {
             if (_groupPoos == null) return;
             foreach (var pool in _groupPoos.Values.SelectMany(pools => pools.Values))
@@ -334,25 +351,34 @@ namespace Fuel.AssetManager.AssetsPools
             if (_loadCallBackMap.ContainsKey(groupName) == false)
                 _loadCallBackMap[groupName] = new Dictionary<long, LoadCallBack<T>>();
             _loadCallBackMap[groupName].Add(loadData.LoadIndex,loadData);
-            GetAsyncAction(path, loadData.LoadIndex, groupName,LoadCallBack);
+            GetAsyncAction(path, loadData.LoadIndex, groupName,LoadCallBack).Forget();
         }
         
-        private async void GetAsyncAction(string path, long index, string groupName, Action<long,T,string> action)
+        private async UniTaskVoid GetAsyncAction(string path, long index, string groupName, Action<long,T,string> action)
         {
-            if (_groupPools.TryGetValue(groupName, out var spritePool))
+            try
             {
-                if (spritePool.TryGetValue(path, out var sprite))
+                if (_groupPools.TryGetValue(groupName, out var spritePool))
                 {
-                    action.Invoke(index,sprite,groupName);
+                    if (spritePool.TryGetValue(path, out var sprite))
+                    {
+                        action.Invoke(index,sprite,groupName);
+                        return;
+                    }
                 }
+                else
+                {
+                    spritePool = new Dictionary<string, T>();
+                    _groupPools.Add(groupName, spritePool);
+                }
+                var spriteLoad = await LoadAsync(path, groupName);
+                action.Invoke(index, spritePool.TryAdd(path, spriteLoad) ? spriteLoad : spritePool[path], groupName);
             }
-            else
+            catch (Exception e)
             {
-                spritePool = new Dictionary<string, T>();
-                _groupPools.Add(groupName, spritePool);
+                UnityEngine.Debug.LogError($"ReferencePools async load failed: {e}");
+                action.Invoke(index, null, groupName);
             }
-            var spriteLoad = await LoadAsync(path, groupName);
-            action.Invoke(index, spritePool.TryAdd(path, spriteLoad) ? spriteLoad : spritePool[path], groupName);
         }
         
         private void LoadCallBack(long index, T obj, string groupName)
@@ -422,7 +448,7 @@ namespace Fuel.AssetManager.AssetsPools
 
             if (_loadIndexCheckMap.TryGetValue(groupName, out var loadIndexCheck))
             {
-                loadCallBacks.Clear();
+                loadIndexCheck.Clear();
             }
             
             if (_groupPools != null && _groupPools.TryGetValue(groupName, out var pool))

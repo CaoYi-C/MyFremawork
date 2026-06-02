@@ -79,31 +79,39 @@ namespace Fuel.AssetManager.AssetsPools
             }
         }
 
-        private async void GetAsyncAction(string path, long index, string groupName, Action<long, GameObject, string> action)
+        private async UniTaskVoid GetAsyncAction(string path, long index, string groupName, Action<long, GameObject, string> action)
         {
-            if (_groupGameObjectPools.TryGetValue(groupName, out var gameObjectPools))
+            try
             {
-                if (gameObjectPools.TryGetValue(path, out var pool))
+                if (_groupGameObjectPools.TryGetValue(groupName, out var gameObjectPools))
                 {
-                    var go = await pool.GetAsync(path, groupName);
-                    action.Invoke(index, go, groupName);
+                    if (gameObjectPools.TryGetValue(path, out var pool))
+                    {
+                        var go = await pool.GetAsync(path, groupName);
+                        action.Invoke(index, go, groupName);
+                    }
+                    else
+                    {
+                        pool = ObjectPools.Instance.Get<GameObjectPool>();
+                        gameObjectPools.Add(path, pool);
+                        var go = await pool.GetAsync(path, groupName);
+                        action.Invoke(index, go, groupName);
+                    }
                 }
                 else
                 {
-                    pool = ObjectPools.Instance.Get<GameObjectPool>();
+                    gameObjectPools = new Dictionary<string, GameObjectPool>();
+                    var pool = ObjectPools.Instance.Get<GameObjectPool>();
+                    _groupGameObjectPools.Add(groupName, gameObjectPools);
                     gameObjectPools.Add(path, pool);
                     var go = await pool.GetAsync(path, groupName);
                     action.Invoke(index, go, groupName);
                 }
             }
-            else
+            catch (Exception e)
             {
-                gameObjectPools = new Dictionary<string, GameObjectPool>();
-                var pool = ObjectPools.Instance.Get<GameObjectPool>();
-                _groupGameObjectPools.Add(groupName, gameObjectPools);
-                gameObjectPools.Add(path, pool);
-                var go = await pool.GetAsync(path, groupName);
-                action.Invoke(index, go, groupName);
+                DebugLogger.LogError($"GameObjectPools async load failed: {e}");
+                action.Invoke(index, null, groupName);
             }
         }
 
@@ -127,7 +135,7 @@ namespace Fuel.AssetManager.AssetsPools
             if (_loadCallBackMap.ContainsKey(groupName) == false)
                 _loadCallBackMap[groupName] = new Dictionary<long, LoadCallBack<GameObject>>();
             _loadCallBackMap[groupName].Add(loadData.LoadIndex, loadData);
-            GetAsyncAction(path, loadData.LoadIndex, groupName, LoadCallBack);
+            GetAsyncAction(path, loadData.LoadIndex, groupName, LoadCallBack).Forget();
         }
 
         private void LoadCallBack(long index, GameObject go, string groupName)
@@ -208,7 +216,7 @@ namespace Fuel.AssetManager.AssetsPools
                     return;
                 }
             }
-            Object.DestroyImmediate(go);
+            DestroyObject(go);
         }
 
         public GameObject GetSync(string path, string groupName = "")
@@ -258,7 +266,7 @@ namespace Fuel.AssetManager.AssetsPools
                     return;
                 }
             }
-            Object.DestroyImmediate(go);
+            DestroyObject(go);
         }
 
         public void RecycleByGroup(string groupName = "")
@@ -376,10 +384,19 @@ namespace Fuel.AssetManager.AssetsPools
             _loadIndexCheckMap.Clear();
         }
 
+        private static void DestroyObject(GameObject go)
+        {
+            if (go == null) return;
+            if (Application.isPlaying)
+                Object.Destroy(go);
+            else
+                Object.DestroyImmediate(go);
+        }
+
         protected void OnDispose()
         {
             if (GameObjectPoolParent != null)
-                Object.DestroyImmediate(GameObjectPoolParent.gameObject);
+                DestroyObject(GameObjectPoolParent.gameObject);
             GameObjectPoolParent = null;
             _groupGameObjectPools = null;
             _loadCallBackMap = null;

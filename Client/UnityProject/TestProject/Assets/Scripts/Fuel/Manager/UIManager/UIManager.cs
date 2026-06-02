@@ -105,10 +105,14 @@ namespace Manager.UIManager
             _uiCamera.useOcclusionCulling = false;
         }
 
+        // 预缓存 UILayer 枚举值，避免 Enum.GetValues 的装箱分配
+        private static readonly UILayer[] _allLayers = (UILayer[])Enum.GetValues(typeof(UILayer));
+
         private void CreateLayerCanvases()
         {
-            foreach (UILayer layer in Enum.GetValues(typeof(UILayer)))
+            for (int i = 0; i < _allLayers.Length; i++)
             {
+                UILayer layer = _allLayers[i];
                 var layerObj = new GameObject(layer.ToString());
                 layerObj.transform.SetParent(transform);
 
@@ -281,6 +285,8 @@ namespace Manager.UIManager
         {
             var window = _resourceManager.GetWindow(windowId);
             if (window == null) return null;
+
+            window.OnRelease();
 
             var layerRoot = GetLayerRoot(window.LayerId);
             var viewObj = _resourceManager.CreateInstance(windowId, layerRoot);

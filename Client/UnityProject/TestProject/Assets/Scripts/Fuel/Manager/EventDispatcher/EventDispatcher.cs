@@ -5,17 +5,74 @@ using Fuel.Singleton;
 namespace Fuel.GameEvent
 {
     /// <summary>
-    /// 事件处理器容器
+    /// 事件处理器容器 — 使用 List 管理订阅列表，避免 delegate +=/-= 产生的 GC 分配
+    /// 支持在 Invoke 期间安全地 Add/Remove（延迟到 Invoke 结束后生效）
     /// </summary>
     internal class EventHandlerList<T>
     {
-        private Action<T> _handlers;
+        private readonly List<Action<T>> _handlers = new List<Action<T>>();
+        private bool _isInvoking;
+        private readonly List<Action<T>> _pendingAdds = new List<Action<T>>();
+        private readonly List<Action<T>> _pendingRemoves = new List<Action<T>>();
 
-        public void Add(Action<T> handler) => _handlers += handler;
-        public void Remove(Action<T> handler) => _handlers -= handler;
-        public void Invoke(T arg) => _handlers?.Invoke(arg);
-        public void Clear() => _handlers = null;
-        public bool HasHandlers => _handlers != null;
+        public void Add(Action<T> handler)
+        {
+            if (_isInvoking)
+                _pendingAdds.Add(handler);
+            else
+                _handlers.Add(handler);
+        }
+
+        public void Remove(Action<T> handler)
+        {
+            if (_isInvoking)
+                _pendingRemoves.Add(handler);
+            else
+                _handlers.Remove(handler);
+        }
+
+        public void Invoke(T arg)
+        {
+            _isInvoking = true;
+            try
+            {
+                for (int i = 0; i < _handlers.Count; i++)
+                {
+                    _handlers[i]?.Invoke(arg);
+                }
+            }
+            finally
+            {
+                _isInvoking = false;
+                ApplyPending();
+            }
+        }
+
+        public void Clear()
+        {
+            _handlers.Clear();
+            _pendingAdds.Clear();
+            _pendingRemoves.Clear();
+            _isInvoking = false;
+        }
+
+        public bool HasHandlers => _handlers.Count > 0 || _pendingAdds.Count > 0;
+
+        private void ApplyPending()
+        {
+            if (_pendingRemoves.Count > 0)
+            {
+                for (int i = 0; i < _pendingRemoves.Count; i++)
+                    _handlers.Remove(_pendingRemoves[i]);
+                _pendingRemoves.Clear();
+            }
+
+            if (_pendingAdds.Count > 0)
+            {
+                _handlers.AddRange(_pendingAdds);
+                _pendingAdds.Clear();
+            }
+        }
     }
 
     /// <summary>

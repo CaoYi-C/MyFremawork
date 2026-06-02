@@ -9,18 +9,19 @@ namespace HotFarmework.AssetManager
 #if UNITY_EDITOR
     public static class AssetsManagerEditor
     {
-        public static async UniTask InitYooAsset()
+        public static async UniTask InitYooAsset(string packageName = "Main")
         {
-            // 初始化资源系统
-            YooAssets.Initialize();
-            // 获取指定的资源包，如果没有找到不会报错
-            // 创建默认的资源包
-            if (!YooAssets.TryGetPackage("Main", out var package))
-            {
-                YooAssets.CreatePackage("Main");
-            }
+            if (!YooAssets.IsInitialized)
+                YooAssets.Initialize();
+
+            if (!YooAssets.TryGetPackage(packageName, out var package))
+                package = YooAssets.CreatePackage(packageName);
+
+            if (package.PackageValid)
+                return;
+
             //编辑器模拟模式
-            var buildResult = EditorSimulateBuildInvoker.Build("Main", (int)EBundleType.VirtualAssetBundle);
+            var buildResult = EditorSimulateBuildInvoker.Build(packageName, (int)EBundleType.VirtualAssetBundle);
             var packageRoot = buildResult.PackageRootDirectory;
             var fileSystemParams = FileSystemParameters.CreateDefaultEditorFileSystemParameters(packageRoot);
 
@@ -68,11 +69,19 @@ namespace HotFarmework.AssetManager
         /// 公共加载组
         /// </summary>
         internal const string NomalAssetGroupName = "NomalAssetGroup";
+        private const string DefaultPackageName = "Main";
+
+#if UNITY_EDITOR
+        public async UniTask EnsureYooAssetInitializedAsync(string packageName = null)
+        {
+            await AssetsManagerEditor.InitYooAsset(string.IsNullOrEmpty(packageName) ? DefaultPackageName : packageName);
+        }
+#endif
 
         internal ResourcePackage GetPackage(string packageName = null)
         {
             if (string.IsNullOrEmpty(packageName))
-                packageName = ""; //MainFrameworkUtils.DefaultPackageName;
+                packageName = DefaultPackageName;
             return YooAssets.GetPackage(packageName);
         }
 
@@ -148,10 +157,18 @@ namespace HotFarmework.AssetManager
             return (handle.GetSubAssetObject<T>(path), handle);
         }
 
-        public async UniTask LoadSceneAsync(string path, bool additive = false, string packageName = null)
+        public SceneHandle LoadSceneAsync(string path, bool additive = false, string packageName = null)
         {
-            var handle = GetPackage(packageName).LoadSceneAsync(path, additive ? UnityEngine.SceneManagement.LoadSceneMode.Additive : UnityEngine.SceneManagement.LoadSceneMode.Single);
-            await handle.ToUniTask();
+            return GetPackage(packageName).LoadSceneAsync(path, additive ? UnityEngine.SceneManagement.LoadSceneMode.Additive : UnityEngine.SceneManagement.LoadSceneMode.Single);
+        }
+
+        public async UniTask UnloadSceneAsync(SceneHandle handle)
+        {
+            if (handle == null || !handle.IsValid)
+                return;
+
+            var operation = handle.UnloadSceneAsync();
+            await operation.ToUniTask();
         }
 
         public void RemoveUnusedAssets(string packageName = null)

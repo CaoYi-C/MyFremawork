@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using Fuel.NetFramework.Core;
 
 namespace Fuel.NetFramework.Codec
@@ -25,8 +26,7 @@ namespace Fuel.NetFramework.Codec
         /// </summary>
         public const int TotalHeaderSize = HeaderLengthSize + CmdIdSize;
 
-        // 线程局部缓冲区，用于 Encode 过程中临时写入头部，避免每次分配临时数组
-        [ThreadStatic] private static byte[] _encodeBuffer;
+        public const int MaxPacketLength = 1024 * 1024;
 
         /// <summary>
         /// 将消息编码为完整数据包字节
@@ -41,39 +41,34 @@ namespace Fuel.NetFramework.Codec
             int length = CmdIdSize + bodyLen;
             int totalLen = HeaderLengthSize + length;
 
-            // 获取或创建线程局部缓冲区
-            byte[] buf = _encodeBuffer;
-            if (buf == null || buf.Length < totalLen)
-            {
-                // 按 2 的幂次方扩容，减少频繁重新分配
-                int size = 1024;
-                while (size < totalLen) size <<= 1;
-                buf = new byte[size];
-                _encodeBuffer = buf;
-            }
+            byte[] packet = new byte[totalLen];
 
             // 写入 Length (big-endian int32)
-            buf[0] = (byte)(length >> 24);
-            buf[1] = (byte)(length >> 16);
-            buf[2] = (byte)(length >> 8);
-            buf[3] = (byte)length;
+            packet[0] = (byte)(length >> 24);
+            packet[1] = (byte)(length >> 16);
+            packet[2] = (byte)(length >> 8);
+            packet[3] = (byte)length;
 
             // 写入 CmdId (big-endian uint32)
-            buf[4] = (byte)(cmdId >> 24);
-            buf[5] = (byte)(cmdId >> 16);
-            buf[6] = (byte)(cmdId >> 8);
-            buf[7] = (byte)cmdId;
+            packet[4] = (byte)(cmdId >> 24);
+            packet[5] = (byte)(cmdId >> 16);
+            packet[6] = (byte)(cmdId >> 8);
+            packet[7] = (byte)cmdId;
 
             // 写入 Body
             if (body != null && bodyLen > 0)
             {
-                Buffer.BlockCopy(body, 0, buf, TotalHeaderSize, bodyLen);
+                Buffer.BlockCopy(body, 0, packet, TotalHeaderSize, bodyLen);
             }
 
-            // 从线程局部缓冲区复制出精确大小的包（socket send 需要独立生命周期）
-            byte[] packet = new byte[totalLen];
-            Buffer.BlockCopy(buf, 0, packet, 0, totalLen);
             return packet;
+        }
+
+        /// <summary>
+        /// 保留兼容旧调用；Encode 现在返回独立精确长度数组，无需归还。
+        /// </summary>
+        public static void ReleasePacket(byte[] packet)
+        {
         }
 
         /// <summary>
@@ -99,6 +94,9 @@ namespace Fuel.NetFramework.Codec
                        | (buffer[offset + 2] << 8)
                        | buffer[offset + 3];
 
+            if (length < CmdIdSize || length > MaxPacketLength)
+                throw new InvalidDataException($"Invalid packet length: {length}");
+
             // 检查数据是否完整
             if (available < HeaderLengthSize + length)
                 return 0;
@@ -111,17 +109,18 @@ namespace Fuel.NetFramework.Codec
 
             // Body 直接引用接收缓冲区，零拷贝
             int bodyLen = length - CmdIdSize;
-            ArraySegment<byte> body;
+            byte[] body;
             if (bodyLen > 0)
             {
-                body = new ArraySegment<byte>(buffer, offset + TotalHeaderSize, bodyLen);
+                body = new byte[bodyLen];
+                Buffer.BlockCopy(buffer, offset + TotalHeaderSize, body, 0, bodyLen);
             }
             else
             {
-                body = new ArraySegment<byte>(Array.Empty<byte>());
+                body = Array.Empty<byte>();
             }
 
-            packet = new Packet(cmdId, body);
+            packet = new Packet(cmdId, new ArraySegment<byte>(body));
             return HeaderLengthSize + length;
         }
     }

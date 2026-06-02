@@ -33,6 +33,7 @@ namespace Fuel.NetFramework.Dispatcher
 
         /// <summary>
         /// 注册消息处理器 (仅响应类型，用于 Push 消息)
+        /// 使用 MessageParser 直接反序列化，避免先 new 再 MergeFrom 的两步分配
         /// </summary>
         /// <typeparam name="TResp">响应/Push 消息类型</typeparam>
         /// <param name="cmdId">消息命令号</param>
@@ -44,10 +45,10 @@ namespace Fuel.NetFramework.Dispatcher
                 Debug.LogWarning($"[MessageDispatcher] Handler for cmd {cmdId} already registered, overwriting.");
             }
 
+            var parser = new MessageParser<TResp>(() => new TResp());
             _handlers[cmdId] = (id, body) =>
             {
-                TResp msg = new TResp();
-                msg.MergeFrom(body.Array, body.Offset, body.Count);
+                TResp msg = parser.ParseFrom(body.Array, body.Offset, body.Count);
                 handler?.Invoke(msg);
             };
         }

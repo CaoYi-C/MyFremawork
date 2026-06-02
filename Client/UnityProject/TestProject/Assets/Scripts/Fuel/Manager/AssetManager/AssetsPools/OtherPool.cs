@@ -100,7 +100,7 @@ namespace Fuel.AssetManager.AssetsPools
             {
                 _createList.Remove(mat);
                 _useList.Remove(mat);
-                Object.DestroyImmediate(mat);
+                DestroyObject(mat);
                 return;
             }
             _useList.Remove(mat);
@@ -120,7 +120,7 @@ namespace Fuel.AssetManager.AssetsPools
         {
             for (var i = _createList.Count - 1; i >= 0; i--)
             {
-                Object.DestroyImmediate(_createList[i]);
+                DestroyObject(_createList[i]);
             }
             _useList.Clear();
             _createList.Clear();
@@ -130,6 +130,15 @@ namespace Fuel.AssetManager.AssetsPools
             _groupName = string.Empty;
             _assetName = string.Empty;
             _isInit = false;
+        }
+
+        private static void DestroyObject(Object obj)
+        {
+            if (obj == null) return;
+            if (Application.isPlaying)
+                Object.Destroy(obj);
+            else
+                Object.DestroyImmediate(obj);
         }
 
         public void Disposable()

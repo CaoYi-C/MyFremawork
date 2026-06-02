@@ -51,7 +51,7 @@ namespace Fuel.Log
         public static void LogWarning(LogWriter writer, string message, params object[] args)
         {
             if (!Enable) return;
-            Debug.LogWarning(FormatMessage(writer, message));
+            Debug.LogWarning(FormatMessage(writer, message, args));
         }
 
         public static void LogError(LogWriter writer, string message, params object[] args)
@@ -69,7 +69,7 @@ namespace Fuel.Log
         public static void LogWarning(string message, params object[] args)
         {
             if (!Enable) return;
-            Debug.LogWarning(FormatMessage(LogWriter.Default, message));
+            Debug.LogWarning(FormatMessage(LogWriter.Default, message, args));
         }
 
         public static void LogError(string message, params object[] args)
@@ -95,7 +95,8 @@ namespace Fuel.Log
 
         private static string FormatMessage(LogWriter writer, string message, params object[] args)
         {
-            return string.Format(message, args);
+            var formatted = args == null || args.Length == 0 ? message : string.Format(message, args);
+            return FormatMessage(writer, (object)formatted);
         }
         private static string FormatMessage(LogWriter writer, object message)
         {

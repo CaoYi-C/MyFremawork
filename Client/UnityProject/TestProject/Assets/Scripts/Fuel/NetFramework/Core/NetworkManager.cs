@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using Google.Protobuf;
 using Fuel.NetFramework.Codec;
 using Fuel.NetFramework.Dispatcher;
@@ -160,10 +161,28 @@ namespace Fuel.NetFramework.Core
         }
 
         /// <summary>
-        /// 每帧驱动消息分发和心跳
+        /// 主线程事件队列 — 连接/断开/错误事件通过此队列转发到主线程
+        /// </summary>
+        private readonly ConcurrentQueue<Action> _mainThreadEventQueue = new ConcurrentQueue<Action>();
+
+        /// <summary>
+        /// 每帧驱动消息分发和心跳，同时处理主线程事件队列
         /// </summary>
         private void Update()
         {
+            // 处理连接/断开等事件（从 Socket 线程转发到主线程）
+            while (_mainThreadEventQueue.TryDequeue(out Action eventAction))
+            {
+                try
+                {
+                    eventAction?.Invoke();
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[NetworkManager] Main thread event error: {e}");
+                }
+            }
+
             Dispatcher?.Update();
             Heartbeat?.Tick();
         }
@@ -185,17 +204,23 @@ namespace Fuel.NetFramework.Core
 
         private void HandleConnected()
         {
-            Debug.Log("[NetworkManager] Connected.");
-            Heartbeat.Start();
-            Heartbeat.ResetRetryCount();
-            OnConnectSuccess?.Invoke();
+            _mainThreadEventQueue.Enqueue(() =>
+            {
+                Debug.Log("[NetworkManager] Connected.");
+                Heartbeat.Start();
+                Heartbeat.ResetRetryCount();
+                OnConnectSuccess?.Invoke();
+            });
         }
 
         private void HandleDisconnected(bool isAbnormal)
         {
-            Debug.Log($"[NetworkManager] Disconnected. Abnormal: {isAbnormal}");
-            Heartbeat.Stop();
-            OnConnectClose?.Invoke(isAbnormal);
+            _mainThreadEventQueue.Enqueue(() =>
+            {
+                Debug.Log($"[NetworkManager] Disconnected. Abnormal: {isAbnormal}");
+                Heartbeat.Stop();
+                OnConnectClose?.Invoke(isAbnormal);
+            });
         }
 
         private void HandleDataReceived(uint cmdId, ArraySegment<byte> body)
@@ -205,8 +230,11 @@ namespace Fuel.NetFramework.Core
 
         private void HandleError(string errorMsg)
         {
-            Debug.LogError($"[NetworkManager] Error: {errorMsg}");
-            OnConnectError?.Invoke(errorMsg);
+            _mainThreadEventQueue.Enqueue(() =>
+            {
+                Debug.LogError($"[NetworkManager] Error: {errorMsg}");
+                OnConnectError?.Invoke(errorMsg);
+            });
         }
 
         #endregion

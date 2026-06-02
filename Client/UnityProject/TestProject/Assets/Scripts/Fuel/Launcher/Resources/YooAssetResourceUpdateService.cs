@@ -73,16 +73,24 @@ namespace Fuel.Launcher.Resources
             if (_downloader == null || _downloader.TotalDownloadCount == 0)
                 return;
 
-            _downloader.DownloadProgressChanged += args =>
+            Action<DownloadProgressChangedEventArgs> handler = args =>
             {
                 float value = args.TotalDownloadBytes <= 0 ? 0f : args.CurrentDownloadBytes / (float)args.TotalDownloadBytes;
                 progress?.Report(value);
             };
 
-            _downloader.StartDownload();
-            await _downloader.ToUniTask(cancellationToken: cancellationToken);
-            if (_downloader.Status != EOperationStatus.Succeeded)
-                throw new InvalidOperationException(_downloader.Error);
+            _downloader.DownloadProgressChanged += handler;
+            try
+            {
+                _downloader.StartDownload();
+                await _downloader.ToUniTask(cancellationToken: cancellationToken);
+                if (_downloader.Status != EOperationStatus.Succeeded)
+                    throw new InvalidOperationException(_downloader.Error);
+            }
+            finally
+            {
+                _downloader.DownloadProgressChanged -= handler;
+            }
         }
 
         public async UniTask ClearUnusedCacheAsync(CancellationToken cancellationToken)

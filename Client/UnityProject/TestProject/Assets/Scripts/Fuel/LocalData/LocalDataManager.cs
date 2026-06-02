@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 using Fuel.Singleton;
 using UnityEngine;
@@ -30,6 +32,10 @@ namespace Fuel.LocalData
         public LocalDataStorageType StorageType { get; private set; } = LocalDataStorageType.JsonFile;
         public bool EncryptionEnabled { get; private set; }
         public string EncryptionKey { get; private set; } = "FuelLocalData";
+
+        // 脏标记批量保存机制：减少高频 Save 时的序列化/加密/IO 开销
+        private readonly Dictionary<string, string> _pendingSaves = new Dictionary<string, string>();
+        private bool _hasPendingSaves;
 
         public void SetStorageType(LocalDataStorageType storageType)
         {
@@ -68,6 +74,49 @@ namespace Fuel.LocalData
             GetStorage(StorageType).SaveString(key, EncodeValue(value));
         }
 
+        /// <summary>
+        /// 延迟保存 — 将数据标记为待保存，不立即执行 IO
+        /// 调用 FlushPendingSaves() 批量写入
+        /// </summary>
+        public void SaveDeferred<T>(string key, T data)
+        {
+            string json = JsonUtility.ToJson(new LocalDataWrapper<T> { data = data });
+            string encoded = EncodeValue(json);
+            _pendingSaves[key] = encoded;
+            _hasPendingSaves = true;
+        }
+
+        /// <summary>
+        /// 延迟保存字符串
+        /// </summary>
+        public void SaveStringDeferred(string key, string value)
+        {
+            _pendingSaves[key] = EncodeValue(value);
+            _hasPendingSaves = true;
+        }
+
+        /// <summary>
+        /// 批量刷新所有待保存的数据到存储
+        /// 适合在帧末尾、场景切换、应用暂停时调用
+        /// </summary>
+        public void FlushPendingSaves()
+        {
+            if (!_hasPendingSaves) return;
+
+            var storage = GetStorage(StorageType);
+            foreach (var kvp in _pendingSaves)
+            {
+                storage.SaveString(kvp.Key, kvp.Value);
+            }
+            _pendingSaves.Clear();
+            _hasPendingSaves = false;
+        }
+
+        /// <summary>
+        /// 是否有待刷新的延迟保存数据
+        /// </summary>
+        public bool HasPendingSaves => _hasPendingSaves;
+
         public bool TryLoadString(string key, out string value)
         {
             if (GetStorage(StorageType).TryLoadString(key, out var storedValue))
@@ -82,6 +131,7 @@ namespace Fuel.LocalData
 
         public void Delete(string key)
         {
+            _pendingSaves.Remove(key);
             GetStorage(StorageType).Delete(key);
         }
 
@@ -115,6 +165,11 @@ namespace Fuel.LocalData
             return EncryptionEnabled ? XorObfuscator.Decode(value, EncryptionKey) : value;
         }
 
+        protected override void Init()
+        {
+            Application.quitting += FlushPendingSaves;
+        }
+
         [Serializable]
         private struct LocalDataWrapper<T>
         {
@@ -124,6 +179,10 @@ namespace Fuel.LocalData
 
     public static class XorObfuscator
     {
+        // 缓存上次使用的 key 和对应字节，避免每次 Encode/Decode 都 GetBytes
+        private static string _cachedKey;
+        private static byte[] _cachedKeyBytes;
+
         public static string Encode(string value, string key)
         {
             if (string.IsNullOrEmpty(value))
@@ -150,11 +209,22 @@ namespace Fuel.LocalData
 
         private static void Apply(byte[] bytes, string key)
         {
-            var keyBytes = Encoding.UTF8.GetBytes(string.IsNullOrEmpty(key) ? "FuelLocalData" : key);
+            byte[] keyBytes = GetKeyBytes(key);
             for (int i = 0; i < bytes.Length; i++)
             {
                 bytes[i] = (byte)(bytes[i] ^ keyBytes[i % keyBytes.Length]);
             }
+        }
+
+        private static byte[] GetKeyBytes(string key)
+        {
+            string effectiveKey = string.IsNullOrEmpty(key) ? "FuelLocalData" : key;
+            if (_cachedKey != effectiveKey)
+            {
+                _cachedKey = effectiveKey;
+                _cachedKeyBytes = Encoding.UTF8.GetBytes(effectiveKey);
+            }
+            return _cachedKeyBytes;
         }
     }
 
@@ -248,14 +318,9 @@ namespace Fuel.LocalData
 
         private static string GetSafeFileName(string key)
         {
-            var invalidChars = Path.GetInvalidFileNameChars();
-            var builder = new StringBuilder(key.Length);
-            for (int i = 0; i < key.Length; i++)
-            {
-                var c = key[i];
-                builder.Append(Array.IndexOf(invalidChars, c) >= 0 ? '_' : c);
-            }
-            return builder.ToString();
+            using var sha256 = SHA256.Create();
+            byte[] hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(key));
+            return Convert.ToBase64String(hash).Replace('/', '_').Replace('+', '-').TrimEnd('=');
         }
     }
 

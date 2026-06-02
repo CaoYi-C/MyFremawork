@@ -13,10 +13,10 @@ namespace Fuel.AssetManager
         private Dictionary<string, AssetHandle> _assetHandles;
         private Dictionary<string, SubAssetsHandle> _subAssetHandles;
         private string _groupName;
-        private bool _isRuningAwait;
+        private int _loadVersion;
         internal void Init(string groupName)
         {
-            _isRuningAwait = true;
+            ++_loadVersion;
             _groupName = groupName;
             _assetHandles = new Dictionary<string, AssetHandle>();
             _subAssetHandles = new Dictionary<string, SubAssetsHandle>();
@@ -39,7 +39,7 @@ namespace Fuel.AssetManager
 
         internal void StopLoad()
         {
-            _isRuningAwait = false;
+            ++_loadVersion;
         }
 
 
@@ -165,9 +165,9 @@ namespace Fuel.AssetManager
                 return value.GetAssetObject<T>();
             }
 
-            _isRuningAwait = true;
+            int version = ++_loadVersion;
             var (obj, handle) = await AssetsManager.Instance.LoadAsyncWithHandle<T>(path);
-            if (!_isRuningAwait)
+            if (version != _loadVersion)
             {
                 handle?.Release();
                 return null;
@@ -194,9 +194,9 @@ namespace Fuel.AssetManager
             {
                 return value.AssetObject;
             }
-            _isRuningAwait = true;
+            int version = ++_loadVersion;
             var (obj, handle) = await AssetsManager.Instance.LoadAsyncWithHandle(path,type);
-            if (!_isRuningAwait)
+            if (version != _loadVersion)
             {
                 handle?.Release();
                 return null;
@@ -220,9 +220,9 @@ namespace Fuel.AssetManager
             {
                 return value;
             }
-            _isRuningAwait = true;
+            int version = ++_loadVersion;
             var (_, handle) = await AssetsManager.Instance.LoadAsyncWithHandle<T>(path);
-            if (!_isRuningAwait)
+            if (version != _loadVersion)
             {
                 handle?.Release();
                 return null;
@@ -247,9 +247,9 @@ namespace Fuel.AssetManager
                 return value;
             }
 
-            _isRuningAwait = true;
+            int version = ++_loadVersion;
             var (_, handle) = await AssetsManager.Instance.LoadAsyncWithHandle(path,type);
-            if (!_isRuningAwait)
+            if (version != _loadVersion)
             {
                 handle?.Release();
                 return null;
@@ -275,9 +275,9 @@ namespace Fuel.AssetManager
                 return value.GetSubAssetObject<Sprite>(path);
             }
 
-            _isRuningAwait = true;
+            int version = ++_loadVersion;
             var (sprite, subHandle) = await AssetsManager.Instance.LoadSubAsyncWithHandle<Sprite>(mainPath, path);
-            if (!_isRuningAwait)
+            if (version != _loadVersion)
             {
                 subHandle?.Release();
                 return null;

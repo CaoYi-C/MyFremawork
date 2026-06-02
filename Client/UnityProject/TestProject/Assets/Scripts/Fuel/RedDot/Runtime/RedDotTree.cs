@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 #if UNITY_EDITOR
 using Sirenix.OdinInspector;
@@ -41,12 +42,39 @@ namespace Fuel.RedDot.RunTime
         private const string TREE_ROOT = "RedDotTreeRoot";
         public RedDotNodeBase Root;
 
+        /// <summary>
+        /// 缓存已格式化的路径，避免重复 string.Format 分配
+        /// key = (redDotId, args的组合hashcode), value = 格式化后的路径
+        /// </summary>
+        private readonly Dictionary<string, string> _formattedPathCache = new Dictionary<string, string>();
+        private const int MaxFormattedPathCacheCount = 1024;
+
         public RedDotTree()
         {
             Root = new RedDotNumberNode(TREE_ROOT);
         }
 
         private RedDotNodeBase GetRedDotNode(string path) => Root.GetRedDotNode(path);
+
+        /// <summary>
+        /// 获取格式化路径，优先从缓存读取
+        /// </summary>
+        private string GetFormattedPath(int redDotId, string pathTemplate, object[] args)
+        {
+            if (args == null || args.Length == 0)
+                return pathTemplate;
+
+            string cacheKey = GetCacheKey(redDotId, pathTemplate, args);
+
+            if (!_formattedPathCache.TryGetValue(cacheKey, out string path))
+            {
+                path = string.Format(pathTemplate, args);
+                if (_formattedPathCache.Count >= MaxFormattedPathCacheCount)
+                    _formattedPathCache.Clear();
+                _formattedPathCache[cacheKey] = path;
+            }
+            return path;
+        }
 
         /// <summary>
         /// 初始化红点节点
@@ -100,7 +128,33 @@ namespace Fuel.RedDot.RunTime
         {
             if (RedDotConfigAsset.Instance.DataDic.TryGetValue(redDotId, out var redDotConfigData))
             {
-                string path = string.Format(redDotConfigData.Path, args);
+                string path = GetFormattedPath(redDotId, redDotConfigData.Path, args);
+                var redDotNode = GetRedDotNode(path);
+                if (redDotNode == null)
+                {
+                    redDotNode = InitRedDotNode(path, redDotConfigData.IsView,
+                        redDotConfigData.BindRole, redDotConfigData.ViewType, redDotConfigData.UseLocalSave);
+                }
+
+                if (redDotNode is RedDotNumberNode redDotNumberNode)
+                {
+                    redDotNumberNode.SetStatus(count);
+                    if (redDotConfigData.UseLocalSave)
+                    {
+                        LocalSave(redDotConfigData.BindRole, path, count.ToString());
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// 修改红点数量（无参数重载，避免 params 数组分配）
+        /// </summary>
+        public void ChangeRedDotCount(int redDotId, int count)
+        {
+            if (RedDotConfigAsset.Instance.DataDic.TryGetValue(redDotId, out var redDotConfigData))
+            {
+                string path = redDotConfigData.Path;
                 var redDotNode = GetRedDotNode(path);
                 if (redDotNode == null)
                 {
@@ -129,7 +183,33 @@ namespace Fuel.RedDot.RunTime
         {
             if (RedDotConfigAsset.Instance.DataDic.TryGetValue(redDotId, out var redDotConfigData))
             {
-                string path = string.Format(redDotConfigData.Path, args);
+                string path = GetFormattedPath(redDotId, redDotConfigData.Path, args);
+                var redDotNode = GetRedDotNode(path);
+                if (redDotNode == null)
+                {
+                    redDotNode = InitRedDotNode(path, redDotConfigData.IsView,
+                        redDotConfigData.BindRole, redDotConfigData.ViewType, redDotConfigData.UseLocalSave);
+                }
+
+                if (redDotNode is RedDotNumberNode redDotNumberNode)
+                {
+                    redDotNumberNode.SetStateByAccumulation(count);
+                    if (redDotConfigData.UseLocalSave)
+                    {
+                        LocalSave(redDotConfigData.BindRole, path, redDotNumberNode.RedDotCount.ToString());
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// 通过累加值修改红点数量（无参数重载，避免 params 数组分配）
+        /// </summary>
+        public void ChangeRedDotCountByAccumulation(int redDotId, int count)
+        {
+            if (RedDotConfigAsset.Instance.DataDic.TryGetValue(redDotId, out var redDotConfigData))
+            {
+                string path = redDotConfigData.Path;
                 var redDotNode = GetRedDotNode(path);
                 if (redDotNode == null)
                 {
@@ -157,7 +237,41 @@ namespace Fuel.RedDot.RunTime
         {
             if (RedDotConfigAsset.Instance.DataDic.TryGetValue(redDotId, out var redDotConfigData))
             {
-                string path = string.Format(redDotConfigData.Path, args);
+                string path = GetFormattedPath(redDotId, redDotConfigData.Path, args);
+                var redDotNode = GetRedDotNode(path);
+                if (redDotNode == null)
+                {
+                    redDotNode = InitRedDotNode(path, redDotConfigData.IsView,
+                        redDotConfigData.BindRole, redDotConfigData.ViewType, redDotConfigData.UseLocalSave);
+                }
+
+                if (redDotNode is RedDotViewNode redDotViewNode)
+                {
+                    if (CanChangView(redDotConfigData,
+                            GetLocalSaveData(redDotConfigData.BindRole, TREE_ROOT + "/" + path)))
+                    {
+                        redDotViewNode.SetStatus(1);
+                    }
+                    else
+                    {
+                        redDotViewNode.SetStatus(0);
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning("非查看红点，设置待查看状态默认设置数量未为1");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 设置待查看（无参数重载，避免 params 数组分配）
+        /// </summary>
+        public void SetWaitWatch(int redDotId)
+        {
+            if (RedDotConfigAsset.Instance.DataDic.TryGetValue(redDotId, out var redDotConfigData))
+            {
+                string path = redDotConfigData.Path;
                 var redDotNode = GetRedDotNode(path);
                 if (redDotNode == null)
                 {
@@ -217,7 +331,7 @@ namespace Fuel.RedDot.RunTime
         {
             if (RedDotConfigAsset.Instance.DataDic.TryGetValue(redDotId, out var redDotConfigData))
             {
-                string path = string.Format(redDotConfigData.Path, args);
+                string path = GetFormattedPath(redDotId, redDotConfigData.Path, args);
                 var redDotNode = GetRedDotNode(path);
                 if (redDotNode == null)
                 {
@@ -256,6 +370,23 @@ namespace Fuel.RedDot.RunTime
         }
 
         /// <summary>
+        /// 获取缓存 key，与 GetFormattedPath 使用相同的 hash 算法
+        /// </summary>
+        private string GetCacheKey(int redDotId, string pathTemplate, object[] args)
+        {
+            return $"{redDotId}|{pathTemplate}|{string.Join("|", args)}";
+        }
+
+        /// <summary>
+        /// 从缓存中移除指定 redDotId + args 对应的路径
+        /// </summary>
+        private void RemoveFormattedPathCache(int redDotId, string pathTemplate, object[] args)
+        {
+            string cacheKey = GetCacheKey(redDotId, pathTemplate, args);
+            _formattedPathCache.Remove(cacheKey);
+        }
+
+        /// <summary>
         /// 移除红点数据结构
         /// </summary>
         /// <param name="redDotId"></param>
@@ -264,7 +395,7 @@ namespace Fuel.RedDot.RunTime
         {
             if (RedDotConfigAsset.Instance.DataDic.TryGetValue(redDotId, out var redDotData))
             {
-                var redPath = args.Length > 0 ? string.Format(redDotData.Path, args) : redDotData.Path;
+                var redPath = GetFormattedPath(redDotId, redDotData.Path, args);
                 RedDotNodeBase redDotNode = GetRedDotNode(redPath);
                 if (redDotNode == null)
                 {
@@ -274,10 +405,13 @@ namespace Fuel.RedDot.RunTime
                 {
                     redDotNode.Clear();
                 }
+
+                // 节点已移除，清理对应的路径缓存
+                RemoveFormattedPathCache(redDotId, redDotData.Path, args);
             }
         }
 
-                /// <summary>
+        /// <summary>
         /// 重置红点节点数据（清除红点状态，不删除节点结构）
         /// </summary>
         /// <param name="redDotId"></param>
@@ -286,7 +420,7 @@ namespace Fuel.RedDot.RunTime
         {
             if (RedDotConfigAsset.Instance.DataDic.TryGetValue(redDotId, out var redDotData))
             {
-                var redPath = args.Length > 0 ? string.Format(redDotData.Path, args) : redDotData.Path;
+                var redPath = GetFormattedPath(redDotId, redDotData.Path, args);
                 RedDotNodeBase redDotNode = GetRedDotNode(redPath);
                 if (redDotNode == null)
                 {
@@ -321,6 +455,7 @@ namespace Fuel.RedDot.RunTime
         {
             string localKey = bindRole ? UniqueKey + key : key;
             PlayerPrefs.SetString(localKey, value);
+            PlayerPrefs.Save();
         }
 
         /// <summary>
@@ -334,6 +469,7 @@ namespace Fuel.RedDot.RunTime
             if (PlayerPrefs.HasKey(localKey))
             {
                 PlayerPrefs.DeleteKey(localKey);
+                PlayerPrefs.Save();
             }
         }
 

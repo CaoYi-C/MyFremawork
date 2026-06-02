@@ -11,5 +11,11 @@ namespace Game.UI.TestPanel
     public class TestPanelNodeProvider : UINodeProvider
     {
         [SerializeField] public Image ImgTest;
+        [SerializeField] public Image TestPanel;
+        [SerializeField] public GameObject GoImage3;
+        [SerializeField] public Button BtnImage3;
+        [SerializeField] public Image ImgImage3;
+        [SerializeField] public Image ImgImage1;
+        [SerializeField] public RectTransform RectImage2;
     }
 }

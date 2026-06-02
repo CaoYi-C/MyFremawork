@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using Fuel.Pools;
 using UnityEngine;
@@ -14,7 +14,7 @@ namespace Fuel.AssetManager.AssetsPools
         private Stack<GameObject> _pool;
         private AssetHandle _baseHandle;
         private const int MaxPoolCount = 100;
-        private bool _isRuningAwait;
+        private int _loadVersion;
         private GameObject _nomalPrefab;
 
         private List<GameObject> _createList;
@@ -30,27 +30,27 @@ namespace Fuel.AssetManager.AssetsPools
 
         private async UniTask<bool> InitAsync(string assetName, string groupName)
         {
-            _isRuningAwait = true;
+            int version = ++_loadVersion;
             _assetName = assetName;
             _groupName = groupName;
             _baseHandle = await AssetsLoadManager.Instance.LoadAsyncHandle<GameObject>(assetName, groupName);
-            if (_isRuningAwait != true)
+            if (version != _loadVersion)
             {
                 _baseHandle?.Release();
                 _baseHandle = null;
                 return false;
             }
-            return true;
+            return _baseHandle != null && _baseHandle.IsValid && _baseHandle.Status == EOperationStatus.Succeeded;
         }
 
         internal bool InitSync(string assetName, string groupName)
         {
-            _isRuningAwait = true;
+            ++_loadVersion;
             _assetName = assetName;
             _groupName = groupName;
             _pool = new Stack<GameObject>();
             _baseHandle = AssetsLoadManager.Instance.LoadSyncHandle<GameObject>(assetName, groupName);
-            return true;
+            return _baseHandle != null && _baseHandle.IsValid && _baseHandle.Status == EOperationStatus.Succeeded;
         }
 
 
@@ -78,14 +78,19 @@ namespace Fuel.AssetManager.AssetsPools
             }
             else
             {
+                int version = _loadVersion;
                 InstantiateOperation instantiate = _baseHandle.InstantiateAsync();
                 await instantiate.ToUniTask();
-                if (!_isRuningAwait)
+                if (version != _loadVersion)
+                {
+                    DestroyObject(instantiate.Result);
                     return null;
+                }
                 GameObject go = instantiate.Result;
                 _createList.Add(go);
                 go.name = assetName;
-                instantiate.Cancel();
+                // 移除 instantiate.Cancel() — 对象已实例化完毕，
+                // Cancel() 可能释放底层 Handle 导致对象引用失效
                 _useList.Add(go);
                 return go;
             }
@@ -143,6 +148,9 @@ namespace Fuel.AssetManager.AssetsPools
             else
             {
                 GameObject go = _baseHandle.InstantiateSync();
+                if (go == null)
+                    return null;
+
                 go.name = assetName;
                 _createList.Add(go);
                 _useList.Add(go);
@@ -157,7 +165,7 @@ namespace Fuel.AssetManager.AssetsPools
             {
                 _createList.Remove(go);
                 _useList.Remove(go);
-                Object.DestroyImmediate(go);
+                DestroyObject(go);
                 return;
             }
             _useList.Remove(go);
@@ -180,7 +188,7 @@ namespace Fuel.AssetManager.AssetsPools
         }
         internal void StopLoad()
         {
-            _isRuningAwait = false;
+            ++_loadVersion;
         }
 
         public void Clear()
@@ -188,7 +196,7 @@ namespace Fuel.AssetManager.AssetsPools
             StopLoad();
             for (int i = _createList.Count - 1; i >= 0; i--)
             {
-                Object.DestroyImmediate(_createList[i]);
+                DestroyObject(_createList[i]);
             }
             _useList.Clear();
             _createList.Clear();
@@ -198,6 +206,15 @@ namespace Fuel.AssetManager.AssetsPools
             _assetName = string.Empty;
             _groupName = string.Empty;
             _isInit = false;
+        }
+
+        private static void DestroyObject(GameObject go)
+        {
+            if (go == null) return;
+            if (Application.isPlaying)
+                Object.Destroy(go);
+            else
+                Object.DestroyImmediate(go);
         }
 
         public void Disposable()

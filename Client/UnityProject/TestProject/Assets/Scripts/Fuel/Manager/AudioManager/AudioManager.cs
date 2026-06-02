@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 using Fuel.Singleton;
 
@@ -147,18 +148,16 @@ namespace Fuel.Manager.AudioManager
             GameObject.Destroy(_bgmRoot);
             GameObject.Destroy(_bgsRoot);
             GameObject.Destroy(_soundSoundEffectRoot);
-            _bgm.Dispose();
-            _bgsGoAudioSource.Dispose();
+            _bgm?.Dispose();
+            _bgsGoAudioSource?.Dispose();
 
             foreach (var source in _goSources)
             {
                 source.Value.Dispose();
             }
-            foreach (var item in _allClips)
-            {
-                GameObject.Destroy(item.Value);
-            }
+            _goSources.Clear();
             _allClips.Clear();
+            Resources.UnloadUnusedAssets().ToUniTask().Forget();
         }
         /// <summary>
         /// 获取audioClip文件

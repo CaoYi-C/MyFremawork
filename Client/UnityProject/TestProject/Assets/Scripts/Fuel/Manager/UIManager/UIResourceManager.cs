@@ -1,5 +1,5 @@
-using System;
 using System.Collections.Generic;
+using Fuel.AssetManager;
 using UnityEngine;
 
 namespace Manager.UIManager
@@ -7,7 +7,6 @@ namespace Manager.UIManager
     public class UIResourceManager
     {
         private Dictionary<string, UIWindow> _windowMap = new Dictionary<string, UIWindow>();
-        private Dictionary<string, GameObject> _prefabCache = new Dictionary<string, GameObject>();
         private Dictionary<string, string> _prefabPaths = new Dictionary<string, string>();
 
         public void RegisterWindow(string windowId, UIWindow window)
@@ -59,45 +58,34 @@ namespace Manager.UIManager
 
         public GameObject LoadPrefab(string windowId)
         {
-            if (_prefabCache.TryGetValue(windowId, out var cached))
-            {
-                return cached;
-            }
-
             string path = GetPrefabPath(windowId);
             if (string.IsNullOrEmpty(path)) return null;
 
-            var prefab = Resources.Load<GameObject>(path);
-            if (prefab != null)
-            {
-                _prefabCache[windowId] = prefab;
-            }
-            return prefab;
+            return AssetsLoadManager.Instance.LoadSync<GameObject>(path, windowId);
         }
 
         public GameObject CreateInstance(string windowId, Transform parent = null)
         {
-            var prefab = LoadPrefab(windowId);
-            if (prefab == null) return null;
+            var instance = LoadPrefab(windowId);
+            if (instance == null) return null;
 
-            var instance = UnityEngine.Object.Instantiate(prefab, parent);
+            instance.transform.SetParent(parent, false);
             return instance;
         }
 
         public void ReleasePrefab(string windowId)
         {
-            if (_prefabCache.ContainsKey(windowId))
-            {
-                var prefab = _prefabCache[windowId];
-                Resources.UnloadAsset(prefab);
-                _prefabCache.Remove(windowId);
-            }
+            AssetsLoadManager.Instance.ReleaseAllByGroup(windowId);
         }
 
         public void Clear()
         {
+            foreach (var windowId in _prefabPaths.Keys)
+            {
+                AssetsLoadManager.Instance.ReleaseAllByGroup(windowId);
+            }
             _windowMap.Clear();
-            _prefabCache.Clear();
+            _prefabPaths.Clear();
         }
     }
 }

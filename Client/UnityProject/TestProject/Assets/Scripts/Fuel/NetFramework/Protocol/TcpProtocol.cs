@@ -136,23 +136,33 @@ namespace Fuel.NetFramework.Protocol
 
             while (offset < _bufferOffset)
             {
-                int consumed = PacketCodec.Decode(
-                    _receiveBuffer, offset,
-                    _bufferOffset - offset,
-                    out Packet packet);
-
-                if (consumed == 0)
-                    break; // 数据不足，等待更多数据
-
-                offset += consumed;
-
+                int consumed;
                 try
                 {
-                    OnDataReceived?.Invoke(packet.CmdId, packet.Body);
+                    consumed = PacketCodec.Decode(
+                        _receiveBuffer, offset,
+                        _bufferOffset - offset,
+                        out Packet packet);
+
+                    if (consumed == 0)
+                        break; // 数据不足，等待更多数据
+
+                    offset += consumed;
+
+                    try
+                    {
+                        OnDataReceived?.Invoke(packet.CmdId, packet.Body);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogError($"[TcpProtocol] OnDataReceived handler error: {e.Message}");
+                    }
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"[TcpProtocol] OnDataReceived handler error: {e.Message}");
+                    Debug.LogError($"[TcpProtocol] Decode error: {e.Message}");
+                    HandleDisconnect(true);
+                    return;
                 }
             }
 

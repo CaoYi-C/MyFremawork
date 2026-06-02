@@ -87,6 +87,7 @@ namespace Fuel.Tools
         /// <summary>
         /// 秒数转 mm:ss
         /// 例如：125 -> 02:05
+        /// 使用 char[] 缓冲避免字符串插值分配
         /// </summary>
         public static string SecondsToMMSS(long totalSeconds)
         {
@@ -97,7 +98,7 @@ namespace Fuel.Tools
             var minutes = (int)timeSpan.TotalMinutes;
             var seconds = timeSpan.Seconds;
 
-            return $"{minutes:D2}:{seconds:D2}";
+            return FormatTwoPartTime(minutes, seconds, ':');
         }
 
         /// <summary>
@@ -112,7 +113,7 @@ namespace Fuel.Tools
             var minutes = (int)timeSpan.TotalMinutes;
             var seconds = timeSpan.Seconds;
 
-            return $"{minutes:D2}:{seconds:D2}";
+            return FormatTwoPartTime(minutes, seconds, ':');
         }
 
         /// <summary>
@@ -159,11 +160,36 @@ namespace Fuel.Tools
         /// <summary>
         /// TimeSpan 转 HH:mm:ss
         /// 小时数允许超过 24
+        /// 使用 char[] 缓冲避免字符串插值分配
         /// </summary>
         private static string FormatTimeSpanToHHMMSS(TimeSpan timeSpan)
         {
             var totalHours = (int)timeSpan.TotalHours;
-            return $"{totalHours:D2}:{timeSpan.Minutes:D2}:{timeSpan.Seconds:D2}";
+            // 格式: HH:mm:ss
+            char[] buf = new char[8];
+            buf[0] = (char)('0' + totalHours / 10);
+            buf[1] = (char)('0' + totalHours % 10);
+            buf[2] = ':';
+            buf[3] = (char)('0' + timeSpan.Minutes / 10);
+            buf[4] = (char)('0' + timeSpan.Minutes % 10);
+            buf[5] = ':';
+            buf[6] = (char)('0' + timeSpan.Seconds / 10);
+            buf[7] = (char)('0' + timeSpan.Seconds % 10);
+            return new string(buf);
+        }
+
+        /// <summary>
+        /// 格式化 XX:YY 格式，避免字符串插值
+        /// </summary>
+        private static string FormatTwoPartTime(int a, int b, char separator)
+        {
+            char[] buf = new char[5];
+            buf[0] = (char)('0' + a / 10);
+            buf[1] = (char)('0' + a % 10);
+            buf[2] = separator;
+            buf[3] = (char)('0' + b / 10);
+            buf[4] = (char)('0' + b % 10);
+            return new string(buf);
         }
 
         #endregion

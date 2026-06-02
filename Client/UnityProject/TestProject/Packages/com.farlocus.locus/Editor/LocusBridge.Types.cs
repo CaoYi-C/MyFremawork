@@ -19,6 +19,8 @@ namespace Locus
             public bool ok;
             public string message;
             public string error;
+            public int processId;
+            public string processPath;
         }
 
         [Serializable]
@@ -33,6 +35,12 @@ namespace Locus
         {
             public string scenePath;
             public string objectPath;
+        }
+
+        [Serializable]
+        private class StartAssetDragRequest
+        {
+            public LocusEditorWindow.DroppedAssetRef[] refs;
         }
 
         [Serializable]
@@ -254,7 +262,7 @@ namespace Locus
             EditorGUIUtility.PingObject(target);
         }
 
-        private static GameObject ResolveSceneObject(string scenePath, string objectPath)
+        public static GameObject ResolveSceneObject(string scenePath, string objectPath)
         {
             string normalizedScenePath = NormalizePath(scenePath);
             string normalizedObjectPath = NormalizeObjectPath(objectPath);

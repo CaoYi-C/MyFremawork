@@ -1,11 +1,12 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using UnityEngine;
 using Cysharp.Threading.Tasks;
 using Fuel.GameEvent;
 using Fuel.Scene;
 using Fuel.Log;
+using HotFarmework.AssetManager;
+using YooAsset;
 
 namespace Manager.SceneManager
 {
@@ -277,36 +278,43 @@ namespace Manager.SceneManager
 
         #region Core Loading
 
+        private readonly Dictionary<string, SceneHandle> _sceneHandles = new Dictionary<string, SceneHandle>();
+
         private async UniTask<bool> LoadSceneAsync(SceneInfo sceneInfo, bool isMainScene,
             SceneData sceneData, Action<float> onProgress)
         {
-            var loadMode = isMainScene
-                ? UnityEngine.SceneManagement.LoadSceneMode.Single
-                : UnityEngine.SceneManagement.LoadSceneMode.Additive;
-            var operation = UnityEngine.SceneManagement.SceneManager.LoadSceneAsync(sceneInfo.ScenePath, loadMode);
-            if (operation == null)
-            {
-                DebugLogger.LogError(LogWriter.SceneManager, $"Failed to load scene by Unity SceneManager: {sceneInfo.ScenePath}");
-                return false;
-            }
+            var sceneId = sceneInfo.SceneId;
+#if UNITY_EDITOR
+            await AssetsManager.Instance.EnsureYooAssetInitializedAsync();
+#endif
+            var handle = AssetsManager.Instance.LoadSceneAsync(sceneInfo.ScenePath, !isMainScene);
 
-            while (!operation.isDone)
+            while (!handle.IsDone)
             {
-                var progress = Mathf.Clamp01(operation.progress / 0.9f);
+                var progress = Mathf.Clamp01(handle.Progress);
                 onProgress?.Invoke(progress);
                 EventDispatcher.Instance.Dispatch(new Scene_LoadProgressEvent
                 {
-                    SceneId = sceneInfo.SceneId,
+                    SceneId = sceneId,
                     Progress = progress
                 });
                 await UniTask.Yield();
             }
 
+            if (handle == null || !handle.IsValid || handle.Status != EOperationStatus.Succeeded)
+            {
+                var error = handle != null && handle.IsValid ? handle.Error : "invalid scene handle";
+                DebugLogger.LogError(LogWriter.SceneManager, $"Failed to load scene by YooAsset AssetsManager: {sceneInfo.ScenePath}, {error}");
+                return false;
+            }
+
+            _sceneHandles[sceneId] = handle;
+
             // 加载完成，进度为1
             onProgress?.Invoke(1f);
             EventDispatcher.Instance.Dispatch(new Scene_LoadProgressEvent
             {
-                SceneId = sceneInfo.SceneId,
+                SceneId = sceneId,
                 Progress = 1f
             });
 
@@ -325,24 +333,13 @@ namespace Manager.SceneManager
 
         private async UniTask UnloadNativeSceneAsync(SceneInfo sceneInfo)
         {
-            var loadedScene = UnityEngine.SceneManagement.SceneManager.GetSceneByPath(sceneInfo.ScenePath);
-            if (!loadedScene.IsValid())
-            {
-                loadedScene = UnityEngine.SceneManagement.SceneManager.GetSceneByName(Path.GetFileNameWithoutExtension(sceneInfo.ScenePath));
-            }
-
-            if (!loadedScene.IsValid() || !loadedScene.isLoaded)
+            if (!_sceneHandles.TryGetValue(sceneInfo.SceneId, out var handle))
             {
                 return;
             }
 
-            var operation = UnityEngine.SceneManagement.SceneManager.UnloadSceneAsync(loadedScene);
-            if (operation == null)
-            {
-                return;
-            }
-
-            await operation.ToUniTask();
+            await AssetsManager.Instance.UnloadSceneAsync(handle);
+            _sceneHandles.Remove(sceneInfo.SceneId);
         }
 
         #endregion

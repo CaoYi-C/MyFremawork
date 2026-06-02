@@ -1,0 +1,72 @@
+{
+    "FileVersion": 1,
+    "EnableAddressable": true,
+    "SupportExtensionless": true,
+    "LocationToLower": false,
+    "IncludeAssetGuid": false,
+    "ReplaceAssetPathWithAddress": false,
+    "OutputNameStyle": 0,
+    "BuildBundleType": 12,
+    "BuildPipeline": "EditorSimulateBuildPipeline",
+    "PackageName": "Main",
+    "PackageVersion": "Simulate",
+    "PackageNote": "2026/6/2 10:55:10",
+    "AssetList": [
+        {
+            "Address": "RedDotConfigAsset",
+            "AssetPath": "Assets/AssetsPackage/Main/RedDot/RedDotConfigAsset.asset",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "SampleScene",
+            "AssetPath": "Assets/AssetsPackage/Main/Scene/SampleScene.unity",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 1,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "TestPanel",
+            "AssetPath": "Assets/AssetsPackage/Main/UIPrefab/TestPanel.prefab",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 2,
+            "DependentBundleIDs": []
+        }
+    ],
+    "BundleList": [
+        {
+            "BundleName": "assets_assetspackage_main_reddot.bundle",
+            "UnityCrc": 0,
+            "FileHash": "dad9c225828ac58aa3045a44ff209155",
+            "FileCrc": 0,
+            "FileSize": 13863,
+            "IsEncrypted": false,
+            "Tags": [],
+            "DependentBundleIDs": []
+        },
+        {
+            "BundleName": "assets_assetspackage_main_scene.bundle",
+            "UnityCrc": 0,
+            "FileHash": "8ba8029e2b1c30fb673e5ee2eb28fb30",
+            "FileCrc": 0,
+            "FileSize": 7874,
+            "IsEncrypted": false,
+            "Tags": [],
+            "DependentBundleIDs": []
+        },
+        {
+            "BundleName": "assets_assetspackage_main_uiprefab.bundle",
+            "UnityCrc": 0,
+            "FileHash": "ed5bdc451e3539413cae85ee8c9a4318",
+            "FileCrc": 0,
+            "FileSize": 13177,
+            "IsEncrypted": false,
+            "Tags": [],
+            "DependentBundleIDs": []
+        }
+    ]
+}

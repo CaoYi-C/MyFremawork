@@ -13,7 +13,7 @@ namespace Manager.UIManager.Editor
     [CustomEditor(typeof(GameObject))]
     public class UIBindEditor : UnityEditor.Editor
     {
-        private const string BindDataRoot = "Assets/Resources/UIBindData";
+        private const string BindDataRoot = "Assets/Scripts/Game/UI/Editor/UIBindData";
         private const float HierarchyIconSize = 16f;
         private const float HierarchyIconGap = 2f;
         private const float HierarchyIconOffsetX = -2f;
@@ -81,8 +81,13 @@ namespace Manager.UIManager.Editor
 
             if (_defaultEditor != null)
             {
-                DestroyImmediate(_defaultEditor);
+                var editor = _defaultEditor;
                 _defaultEditor = null;
+                EditorApplication.delayCall += () =>
+                {
+                    if (editor != null)
+                        DestroyImmediate(editor);
+                };
             }
         }
 
@@ -287,9 +292,10 @@ namespace Manager.UIManager.Editor
 
         private static UIBindData CreateBindDataAsset(string prefabPath)
         {
-            if (!AssetDatabase.IsValidFolder("Assets/Resources")) AssetDatabase.CreateFolder("Assets", "Resources");
-            if (!AssetDatabase.IsValidFolder(BindDataRoot)) AssetDatabase.CreateFolder("Assets/Resources", "UIBindData");
-
+            if (!Directory.Exists(BindDataRoot))
+            {
+                Directory.CreateDirectory(BindDataRoot);
+            }
             string prefabName = Path.GetFileNameWithoutExtension(prefabPath);
             string assetPath = AssetDatabase.GenerateUniqueAssetPath($"{BindDataRoot}/{prefabName}.asset");
             var asset = ScriptableObject.CreateInstance<UIBindData>();

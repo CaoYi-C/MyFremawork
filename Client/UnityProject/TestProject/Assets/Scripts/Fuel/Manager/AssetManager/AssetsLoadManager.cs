@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Cysharp.Threading.Tasks;
 using HotFarmework.AssetManager;
 using HotFramework.AssetManager.AssetsPools;
@@ -14,15 +14,9 @@ namespace Fuel.AssetManager
     // ReSharper disable once ClassNeverInstantiated.Global
     public class AssetsLoadManager : Singleton<AssetsLoadManager>
     {
-        private UnityEvent _destroyEvent;
-        private UnityEvent _disposeEvent;
+        private UnityEvent _destroyEvent = new UnityEvent();
+        private UnityEvent _disposeEvent = new UnityEvent();
         public static bool UseAsyncLoad { get; set; }
-
-        protected void RegistrationLife()
-        {
-            _destroyEvent = new UnityEvent();
-            _disposeEvent = new UnityEvent();
-        }
 
         protected void OnEnable()
         {

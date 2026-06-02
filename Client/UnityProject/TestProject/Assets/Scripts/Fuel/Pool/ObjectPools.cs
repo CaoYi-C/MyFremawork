@@ -62,12 +62,7 @@ namespace Fuel.Pools
         private Dictionary<RuntimeTypeHandle, HashSet<IObjectPool>> _pooledObjects;
 #endif
 
-        protected void RegistrationLife()
-        {
-           
-        }
-
-        protected void Awake()
+        protected override void Init()
         {
             _pool = new Dictionary<RuntimeTypeHandle, Stack<IObjectPool>>();
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
