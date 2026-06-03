@@ -703,12 +703,12 @@ public class ProtoBatchWindowAsync : EditorWindow
 
     private void ResetDefaults()
     {
-        batPath = "Tools/gen_proto_cs_advanced.bat";
-        protoRoot = "Proto";
+        batPath = "../../../../Common/ProtoTool/exportProtobuf.bat";
+        protoRoot = "../../../../Common/ProtoTool/Proto";
         outRoot = "Assets/Scripts/Generated/Proto";
         md5StatePath = "Assets/Scripts/Generated/.MD5";
-        protocPath = "";
-        importRoot = "Proto";
+        protocPath = "../../../../Common/ProtoTool/protoc.exe";
+        importRoot = "../../../../Common/ProtoTool/Proto";
         enableGrpc = false;
         grpcPluginPath = "";
         cleanOutput = false;
@@ -749,7 +749,7 @@ public class ProtoBatchWindowAsync : EditorWindow
         sbCmds.AppendLine("// DO NOT EDIT MANUALLY");
         sbCmds.AppendLine("using System;");
         sbCmds.AppendLine();
-        sbCmds.AppendLine("public static partial class ProtoCmds {");
+        sbCmds.AppendLine("public partial class ProtoCmds {");
 
         // ============ 2. Generate ProtoCmdsLookup.cs (reverse lookup) ============
         var sbLookup = new StringBuilder();
@@ -757,6 +757,7 @@ public class ProtoBatchWindowAsync : EditorWindow
         sbLookup.AppendLine("// DO NOT EDIT MANUALLY");
         sbLookup.AppendLine("using System;");
         sbLookup.AppendLine("using System.Collections.Generic;");
+        sbLookup.AppendLine("using Fuel.NetFramework.Core;");
         sbLookup.AppendLine();
         sbLookup.AppendLine("public partial class ProtoCmds: IProtoCmd {");
         sbLookup.AppendLine();
@@ -765,11 +766,11 @@ public class ProtoBatchWindowAsync : EditorWindow
         sbLookup.AppendLine("    {");
         sbLookup.AppendLine("       return TypeCmdMap.TryGetValue(typeof(T), out var id) ? id : (uint)0;");
         sbLookup.AppendLine("    }");
-        sbLookup.AppendLine("    public static uint GetCmdId(Type type)");
+        sbLookup.AppendLine("    public uint GetCmdId(Type type)");
         sbLookup.AppendLine("    {");
         sbLookup.AppendLine("       return TypeCmdMap.TryGetValue(type, out var id) ? id : (uint)0;");
         sbLookup.AppendLine("    }");
-        sbLookup.AppendLine("    public static void RegisterAll()");
+        sbLookup.AppendLine("    public void RegisterAll()");
         sbLookup.AppendLine("    {");
 
         uint baseCmd = 1000;

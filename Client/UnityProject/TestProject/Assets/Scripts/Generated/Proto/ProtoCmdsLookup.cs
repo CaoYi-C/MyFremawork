@@ -4,17 +4,16 @@ using System;
 using System.Collections.Generic;
 using Fuel.NetFramework.Core;
 
-public partial class ProtoCmds: IProtoCmd
-{
+public partial class ProtoCmds: IProtoCmd {
+
     private readonly Dictionary<Type, uint> TypeCmdMap = new Dictionary<Type, uint>();
     public uint GetCmdId<T>()
     {
-        return TypeCmdMap.TryGetValue(typeof(T), out var id) ? id : (uint)0;
+       return TypeCmdMap.TryGetValue(typeof(T), out var id) ? id : (uint)0;
     }
-
     public uint GetCmdId(Type type)
     {
-        return TypeCmdMap.TryGetValue(type, out var id) ? id : (uint)0;
+       return TypeCmdMap.TryGetValue(type, out var id) ? id : (uint)0;
     }
     public void RegisterAll()
     {
