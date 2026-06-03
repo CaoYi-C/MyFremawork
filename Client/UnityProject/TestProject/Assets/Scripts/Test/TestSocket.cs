@@ -12,10 +12,9 @@ public class TestSocket : MonoBehaviour
     {
         _logText.text = "等待登录";
         _loginBtn.onClick.AddListener(LoginReq);
-
+        NetworkManager.Instance.InitCmdGetter(new ProtoCmds());
         NetworkManager.Instance.Connect("127.0.0.1", 9000);
         NetHandlerGenerated.RegisterAll();
-        ProtoCmds.RegisterAll();
     }
     // Start is called before the first frame update
     void Start()

@@ -758,21 +758,21 @@ public class ProtoBatchWindowAsync : EditorWindow
         sbLookup.AppendLine("using System;");
         sbLookup.AppendLine("using System.Collections.Generic;");
         sbLookup.AppendLine();
-        sbLookup.AppendLine("public static partial class ProtoCmds {");
+        sbLookup.AppendLine("public partial class ProtoCmds: IProtoCmd {");
         sbLookup.AppendLine();
-        sbLookup.AppendLine("    private static readonly Dictionary<Type, ushort> TypeCmdMap = new Dictionary<Type, ushort>();");
-        sbLookup.AppendLine("    public static ushort GetCmdId<T>()");
+        sbLookup.AppendLine("    private readonly Dictionary<Type, uint> TypeCmdMap = new Dictionary<Type, uint>();");
+        sbLookup.AppendLine("    public uint GetCmdId<T>()");
         sbLookup.AppendLine("    {");
-        sbLookup.AppendLine("       return TypeCmdMap.TryGetValue(typeof(T), out var id) ? id : (ushort)0;");
+        sbLookup.AppendLine("       return TypeCmdMap.TryGetValue(typeof(T), out var id) ? id : (uint)0;");
         sbLookup.AppendLine("    }");
-        sbLookup.AppendLine("    public static ushort GetCmdId(Type type)");
+        sbLookup.AppendLine("    public static uint GetCmdId(Type type)");
         sbLookup.AppendLine("    {");
-        sbLookup.AppendLine("       return TypeCmdMap.TryGetValue(type, out var id) ? id : (ushort)0;");
+        sbLookup.AppendLine("       return TypeCmdMap.TryGetValue(type, out var id) ? id : (uint)0;");
         sbLookup.AppendLine("    }");
         sbLookup.AppendLine("    public static void RegisterAll()");
         sbLookup.AppendLine("    {");
 
-        ushort baseCmd = 1000;
+        uint baseCmd = 1000;
         progress01 = 0.01f;
         int index = 0;
 
@@ -803,8 +803,8 @@ public class ProtoBatchWindowAsync : EditorWindow
                     if (braceIndex >= 0) cls = cls.Substring(0, braceIndex);
                     cls = new string(cls.Where(ch => char.IsLetterOrDigit(ch) || ch == '_').ToArray());
 
-                    ushort cmd = baseCmd++;
-                    sbCmds.AppendLine($"    public const ushort {cls} = {cmd};");
+                    uint cmd = baseCmd++;
+                    sbCmds.AppendLine($"    public const uint {cls} = {cmd};");
 
                     // Reverse lookup entry
                     string typeExpr = string.IsNullOrEmpty(namespaceStr)
@@ -814,7 +814,7 @@ public class ProtoBatchWindowAsync : EditorWindow
                 }
             }
 
-            baseCmd = (ushort)(((baseCmd / 1000) + 1) * 1000);
+            baseCmd = (uint)(((baseCmd / 1000) + 1) * 1000);
             sbCmds.AppendLine();
         }
 

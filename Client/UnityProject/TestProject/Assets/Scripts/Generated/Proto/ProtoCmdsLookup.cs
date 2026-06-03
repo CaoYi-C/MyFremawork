@@ -2,21 +2,21 @@
 // DO NOT EDIT MANUALLY
 using System;
 using System.Collections.Generic;
+using Fuel.NetFramework.Core;
 
-public static partial class ProtoCmds
+public partial class ProtoCmds: IProtoCmd
 {
-
-    private static readonly Dictionary<Type, ushort> TypeCmdMap = new Dictionary<Type, ushort>();
-    public static ushort GetCmdId<T>()
+    private readonly Dictionary<Type, uint> TypeCmdMap = new Dictionary<Type, uint>();
+    public uint GetCmdId<T>()
     {
-        return TypeCmdMap.TryGetValue(typeof(T), out var id) ? id : (ushort)0;
+        return TypeCmdMap.TryGetValue(typeof(T), out var id) ? id : (uint)0;
     }
 
-    public static ushort GetCmdId(Type type)
+    public uint GetCmdId(Type type)
     {
-        return TypeCmdMap.TryGetValue(type, out var id) ? id : (ushort)0;
+        return TypeCmdMap.TryGetValue(type, out var id) ? id : (uint)0;
     }
-    public static void RegisterAll()
+    public void RegisterAll()
     {
         TypeCmdMap.Add(typeof(Basepb.IntTrace), 1000);
         TypeCmdMap.Add(typeof(Basepb.StringTrace), 1001);

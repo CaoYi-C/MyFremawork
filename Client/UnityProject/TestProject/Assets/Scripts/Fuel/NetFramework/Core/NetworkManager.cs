@@ -30,7 +30,7 @@ namespace Fuel.NetFramework.Core
         /// 命令获取器
         /// </summary>
         public IProtoCmd CmdGetter { get; private set; }
-        
+
         /// <summary>
         /// 心跳管理器
         /// </summary>
@@ -63,13 +63,15 @@ namespace Fuel.NetFramework.Core
             Heartbeat.OnHeartbeatTimeout += HandleHeartbeatTimeout;
             Heartbeat.OnMaxRetryExceeded += HandleMaxRetryExceeded;
         }
+        
         /// <summary>
         /// 设置命令获取器
         /// </summary>
         /// <param name="cmdGetter">命令获取器实例</param>
-        public void SetCmdGetter(IProtoCmd cmdGetter)
+        public void InitCmdGetter(IProtoCmd cmdGetter)
         {
             CmdGetter = cmdGetter;
+            CmdGetter.RegisterAll();
         }
         /// <summary>
         /// 连接到服务器 (默认使用 TCP 协议)
