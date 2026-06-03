@@ -32,6 +32,12 @@ namespace Fuel.Manager.AudioManager
             /// 淡入后淡出前的音量
             /// </summary>
             private float _fadeOffsetVolume;
+            // 注意: 旧的 _fadeOffsetVolume 字段在 TickFade 公式修复后已废弃，仅在 Reset/Play/Stop 处保留写入以维持旧序列化兼容。
+            // 新公式使用 _fadeDeltaVolume（每次 fade 开始时由 AutoSetFade 刷新）。
+            /// <summary>
+            /// 淡入淡出总音量差（|目标 - 当前|），由 AutoSetFade 在每次淡入淡出开始时刷新
+            /// </summary>
+            private float _fadeDeltaVolume;
             /// <summary>
             /// 淡入淡出的目标音量
             /// </summary>
@@ -261,6 +267,8 @@ namespace Fuel.Manager.AudioManager
                 }
                 else
                 {
+                    // 记录本次淡入淡出需要跨越的音量差，用于 TickFade 计算正确的 lerp 速度
+                    _fadeDeltaVolume = Mathf.Abs(_as.volume - volume);
                     _isSetVolume = true;
                     _fadeDir = _as.volume - volume > 0 ? -1 : 1;
                 }
@@ -284,28 +292,23 @@ namespace Fuel.Manager.AudioManager
             
             /// <summary>
             /// 处理渐变
+            /// 旧实现: _as.volume += _fadeOffsetVolume / _fadeSeconds * dt * _fadeDir;
+            /// 旧公式错误——_fadeOffsetVolume 从未随每次 fade 刷新，导致 fade 不会朝目标收敛。
+            /// 改为基于 _fadeDeltaVolume（本次 fade 起点到目标的音量差）计算每帧步长，
+            /// 并用 Mathf.MoveTowards 防止浮点漂移越过目标值。
             /// </summary>
             private void TickFade(float dt)
             {
-                if (!_isSetVolume || State == AudioSourceState.None|| _fadeSeconds == 0 ) return;
-                _as.volume += _fadeOffsetVolume / _fadeSeconds * dt * _fadeDir;
-                if (_fadeDir > 0)//渐入
+                if (!_isSetVolume || State == AudioSourceState.None || _fadeSeconds <= 0f) return;
+
+                float step = _fadeDeltaVolume / _fadeSeconds * dt;
+                _as.volume = Mathf.MoveTowards(_as.volume, _fadeTargetVolume, step);
+
+                if (Mathf.Approximately(_as.volume, _fadeTargetVolume))
                 {
-                    if (_as.volume >= _fadeTargetVolume)
-                    {
-                        _as.volume = _fadeTargetVolume;
-                        _fadeSeconds = 0;
-                        OnFadeComplete();
-                    }
-                }
-                else if (_fadeDir < 0)//渐出
-                {
-                    if (_as.volume <= _fadeTargetVolume)
-                    {
-                        _as.volume = _fadeTargetVolume;
-                        _fadeSeconds = 0;
-                        OnFadeComplete();
-                    }
+                    _as.volume = _fadeTargetVolume;
+                    _fadeSeconds = 0f;
+                    OnFadeComplete();
                 }
             }
             /// <summary>

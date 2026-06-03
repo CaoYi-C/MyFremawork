@@ -3,8 +3,19 @@
 using System;
 using System.Collections.Generic;
 
-public static partial class ProtoCmds {
+public static partial class ProtoCmds
+{
 
+    private static readonly Dictionary<Type, ushort> TypeCmdMap = new Dictionary<Type, ushort>();
+    public static ushort GetCmdId<T>()
+    {
+        return TypeCmdMap.TryGetValue(typeof(T), out var id) ? id : (ushort)0;
+    }
+
+    public static ushort GetCmdId(Type type)
+    {
+        return TypeCmdMap.TryGetValue(type, out var id) ? id : (ushort)0;
+    }
     public static void RegisterAll()
     {
         TypeCmdMap.Add(typeof(Basepb.IntTrace), 1000);

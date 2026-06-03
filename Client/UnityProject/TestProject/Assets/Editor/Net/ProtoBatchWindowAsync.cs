@@ -760,6 +760,15 @@ public class ProtoBatchWindowAsync : EditorWindow
         sbLookup.AppendLine();
         sbLookup.AppendLine("public static partial class ProtoCmds {");
         sbLookup.AppendLine();
+        sbLookup.AppendLine("    private static readonly Dictionary<Type, ushort> TypeCmdMap = new Dictionary<Type, ushort>();");
+        sbLookup.AppendLine("    public static ushort GetCmdId<T>()");
+        sbLookup.AppendLine("    {");
+        sbLookup.AppendLine("       return TypeCmdMap.TryGetValue(typeof(T), out var id) ? id : (ushort)0;");
+        sbLookup.AppendLine("    }");
+        sbLookup.AppendLine("    public static ushort GetCmdId(Type type)");
+        sbLookup.AppendLine("    {");
+        sbLookup.AppendLine("       return TypeCmdMap.TryGetValue(type, out var id) ? id : (ushort)0;");
+        sbLookup.AppendLine("    }");
         sbLookup.AppendLine("    public static void RegisterAll()");
         sbLookup.AppendLine("    {");
 

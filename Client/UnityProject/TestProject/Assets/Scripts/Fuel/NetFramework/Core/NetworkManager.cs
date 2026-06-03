@@ -27,6 +27,11 @@ namespace Fuel.NetFramework.Core
         public MessageDispatcher Dispatcher { get; private set; }
 
         /// <summary>
+        /// 命令获取器
+        /// </summary>
+        public IProtoCmd CmdGetter { get; private set; }
+        
+        /// <summary>
         /// 心跳管理器
         /// </summary>
         public HeartbeatManager Heartbeat { get; private set; }
@@ -58,7 +63,14 @@ namespace Fuel.NetFramework.Core
             Heartbeat.OnHeartbeatTimeout += HandleHeartbeatTimeout;
             Heartbeat.OnMaxRetryExceeded += HandleMaxRetryExceeded;
         }
-
+        /// <summary>
+        /// 设置命令获取器
+        /// </summary>
+        /// <param name="cmdGetter">命令获取器实例</param>
+        public void SetCmdGetter(IProtoCmd cmdGetter)
+        {
+            CmdGetter = cmdGetter;
+        }
         /// <summary>
         /// 连接到服务器 (默认使用 TCP 协议)
         /// </summary>
@@ -104,7 +116,7 @@ namespace Fuel.NetFramework.Core
         /// <param name="msg">Protobuf 消息实例</param>
         public void Send<T>(T msg) where T : IMessage
         {
-            uint cmdId = ProtoCmds.GetCmdId<T>();
+            uint cmdId = CmdGetter.GetCmdId<T>();
             if (cmdId == 0)
             {
                 Debug.LogError($"[NetworkManager] No ProtoCmds entry for type '{typeof(T).Name}', cannot send.");
@@ -202,17 +214,6 @@ namespace Fuel.NetFramework.Core
 
         #region Protocol Event Handlers
 
-        private void HandleConnected()
-        {
-            _mainThreadEventQueue.Enqueue(() =>
-            {
-                Debug.Log("[NetworkManager] Connected.");
-                Heartbeat.Start();
-                Heartbeat.ResetRetryCount();
-                OnConnectSuccess?.Invoke();
-            });
-        }
-
         private void HandleDisconnected(bool isAbnormal)
         {
             _mainThreadEventQueue.Enqueue(() =>
@@ -246,7 +247,7 @@ namespace Fuel.NetFramework.Core
         /// </summary>
         private void HandleHeartbeatTimeout()
         {
-            Debug.LogWarning("[NetworkManager] Heartbeat timeout, attempting reconnect...");
+            Debug.LogWarning($"[NetworkManager] Heartbeat timeout, attempting reconnect in {_reconnectDelay:F1}s...");
             TryReconnect();
         }
 
@@ -259,21 +260,57 @@ namespace Fuel.NetFramework.Core
             Disconnect();
         }
 
+        // 重连退避：每次重连失败后加倍延迟（指数退避），到达上限后保持上限
+        private float _reconnectDelay = 1f;
+        private float _reconnectDeadline;   // 下一次允许重连的 Unity 时间
+        private const float InitialReconnectDelay = 1f;
+        private const float MaxReconnectDelay = 30f;
+        private ProtocolType _lastProtocolType;
+        private string _lastHost;
+        private int _lastPort;
+
         /// <summary>
-        /// 尝试重连（子类可重写自定义重连逻辑）
+        /// 尝试重连（子类可重写自定义重连逻辑）。
+        /// 旧实现是"断开后立即重连"，服务端挂掉时会以最高频反复重连。
+        /// 新实现按指数退避延迟：1s → 2s → 4s → 8s → 16s → 30s (上限)。
         /// </summary>
         protected virtual void TryReconnect()
         {
-            // 默认实现：断开后重新连接
             if (Protocol != null)
             {
-                string host = Protocol.Host;
-                int port = Protocol.Port;
-                ProtocolType type = Protocol.Type;
-
+                _lastProtocolType = Protocol.Type;
+                _lastHost = Protocol.Host;
+                _lastPort = Protocol.Port;
                 Protocol.Close();
-                Connect(type, host, port);
             }
+            else if (_lastHost == null)
+            {
+                return; // 没有可重连的目标
+            }
+
+            if (Time.unscaledTime < _reconnectDeadline)
+                return; // 退避窗口未到，等待下一帧
+
+            Debug.Log($"[NetworkManager] Reconnecting to {_lastHost}:{_lastPort} (delay was {_reconnectDelay:F1}s)");
+            Connect(_lastProtocolType, _lastHost, _lastPort);
+            _reconnectDeadline = Time.unscaledTime + _reconnectDelay;
+            _reconnectDelay = Mathf.Min(_reconnectDelay * 2f, MaxReconnectDelay);
+        }
+
+        /// <summary>
+        /// 连接成功时重置退避状态
+        /// </summary>
+        private void HandleConnected()
+        {
+            _reconnectDelay = InitialReconnectDelay;
+            _reconnectDeadline = 0f;
+            _mainThreadEventQueue.Enqueue(() =>
+            {
+                Debug.Log("[NetworkManager] Connected.");
+                Heartbeat.Start();
+                Heartbeat.ResetRetryCount();
+                OnConnectSuccess?.Invoke();
+            });
         }
 
         #endregion

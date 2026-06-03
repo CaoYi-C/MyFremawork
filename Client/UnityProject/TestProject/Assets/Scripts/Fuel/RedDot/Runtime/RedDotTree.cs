@@ -46,12 +46,14 @@ namespace Fuel.RedDot.RunTime
         /// 缓存已格式化的路径，避免重复 string.Format 分配
         /// key = (redDotId, args的组合hashcode), value = 格式化后的路径
         /// </summary>
-        private readonly Dictionary<string, string> _formattedPathCache = new Dictionary<string, string>();
+        private readonly Dictionary<long, string> _formattedPathCache = new Dictionary<long, string>();
         private const int MaxFormattedPathCacheCount = 1024;
 
         public RedDotTree()
         {
             Root = new RedDotNumberNode(TREE_ROOT);
+            // 退出时强制 flush 所有攒批中的 PlayerPrefs
+            Application.quitting += FlushPendingSaves;
         }
 
         private RedDotNodeBase GetRedDotNode(string path) => Root.GetRedDotNode(path);
@@ -64,7 +66,7 @@ namespace Fuel.RedDot.RunTime
             if (args == null || args.Length == 0)
                 return pathTemplate;
 
-            string cacheKey = GetCacheKey(redDotId, pathTemplate, args);
+            long cacheKey = GetCacheKey(redDotId, args);
 
             if (!_formattedPathCache.TryGetValue(cacheKey, out string path))
             {
@@ -370,19 +372,29 @@ namespace Fuel.RedDot.RunTime
         }
 
         /// <summary>
-        /// 获取缓存 key，与 GetFormattedPath 使用相同的 hash 算法
+        /// 用 (redDotId, args) 组合 HashCode 代替字符串拼装，避免每帧 string.Join 分配
+        /// 旧版返回 string 还会触发 Dictionary<string,string> 的字符串哈希开销
         /// </summary>
-        private string GetCacheKey(int redDotId, string pathTemplate, object[] args)
+        private static long GetCacheKey(int redDotId, object[] args)
         {
-            return $"{redDotId}|{pathTemplate}|{string.Join("|", args)}";
+            // redDotId 占高 32 位，args 组合 hash 占低 32 位
+            unchecked
+            {
+                int argsHash = HashCode.Combine(args.Length, args.Length > 0 ? args[0] : null);
+                for (int i = 1; i < args.Length; i++)
+                {
+                    argsHash = HashCode.Combine(argsHash, args[i]);
+                }
+                return ((long)redDotId << 32) | (uint)argsHash;
+            }
         }
 
         /// <summary>
         /// 从缓存中移除指定 redDotId + args 对应的路径
         /// </summary>
-        private void RemoveFormattedPathCache(int redDotId, string pathTemplate, object[] args)
+        private void RemoveFormattedPathCache(int redDotId, object[] args)
         {
-            string cacheKey = GetCacheKey(redDotId, pathTemplate, args);
+            long cacheKey = GetCacheKey(redDotId, args);
             _formattedPathCache.Remove(cacheKey);
         }
 
@@ -407,7 +419,7 @@ namespace Fuel.RedDot.RunTime
                 }
 
                 // 节点已移除，清理对应的路径缓存
-                RemoveFormattedPathCache(redDotId, redDotData.Path, args);
+                RemoveFormattedPathCache(redDotId, args);
             }
         }
 
@@ -448,14 +460,30 @@ namespace Fuel.RedDot.RunTime
         /// </summary>
         public static string UniqueKey;
 
+        // 攒批落盘：高频 SetString 期间不立即 PlayerPrefs.Save，
+        // 由 FlushPendingSaves() 触发一次性 Save() 避免卡帧。
+        private static readonly Dictionary<string, string> _pendingRedDotSaves = new Dictionary<string, string>();
+        private static readonly HashSet<string> _pendingRedDotDeletes = new HashSet<string>();
+        private static bool _hasPendingRedDotWrites;
+
         /// <summary>
-        /// 本地储存红点数据
+        /// 是否有待刷新的攒批写盘（用于测试和外部判断）
+        /// </summary>
+        public static bool HasPendingSaves => _hasPendingRedDotWrites;
+
+        /// <summary>
+        /// 本地储存红点数据。
+        /// 写值立即生效到 PlayerPrefs 内存，但 PlayerPrefs.Save() 改为攒批——
+        /// 默认仅当达到 <see cref="PendingRedDotFlushThreshold"/> 次写入或调用 <see cref="FlushPendingSaves"/> 时才刷盘。
         /// </summary>
         public static void LocalSave(bool bindRole, string key, string value)
         {
             string localKey = bindRole ? UniqueKey + key : key;
             PlayerPrefs.SetString(localKey, value);
-            PlayerPrefs.Save();
+            _pendingRedDotSaves[localKey] = value;
+            _pendingRedDotDeletes.Remove(localKey);
+            _hasPendingRedDotWrites = true;
+            MaybeFlush();
         }
 
         /// <summary>
@@ -469,8 +497,45 @@ namespace Fuel.RedDot.RunTime
             if (PlayerPrefs.HasKey(localKey))
             {
                 PlayerPrefs.DeleteKey(localKey);
-                PlayerPrefs.Save();
+                _pendingRedDotDeletes.Add(localKey);
+                _pendingRedDotSaves.Remove(localKey);
+                _hasPendingRedDotWrites = true;
+                MaybeFlush();
             }
+        }
+
+        /// <summary>
+        /// 自动攒批阈值：攒够 N 次写盘或 M 秒后强制 flush
+        /// </summary>
+        public static int PendingRedDotFlushThreshold = 16;
+        private static float _lastFlushTime;
+
+        private static void MaybeFlush()
+        {
+            if (_pendingRedDotSaves.Count + _pendingRedDotDeletes.Count >= PendingRedDotFlushThreshold)
+            {
+                FlushPendingSaves();
+                return;
+            }
+            // 兜底：超过 5 秒未刷盘也强制 flush（防止崩溃丢数据）
+            if (_hasPendingRedDotWrites && UnityEngine.Time.realtimeSinceStartup - _lastFlushTime > 5f)
+            {
+                FlushPendingSaves();
+            }
+        }
+
+        /// <summary>
+        /// 主动 flush 所有攒批中的 PlayerPrefs 写盘
+        /// 建议在场景切换、应用暂停、退出前调用
+        /// </summary>
+        public static void FlushPendingSaves()
+        {
+            if (!_hasPendingRedDotWrites) return;
+            PlayerPrefs.Save();
+            _pendingRedDotSaves.Clear();
+            _pendingRedDotDeletes.Clear();
+            _hasPendingRedDotWrites = false;
+            _lastFlushTime = UnityEngine.Time.realtimeSinceStartup;
         }
 
         /// <summary>

@@ -98,6 +98,7 @@ public static class NetHandlerGeneratorUtil
         sb.AppendLine("using Fuel.NetFramework.Protocol;");
         sb.AppendLine("using Fuel.NetFramework.Attributes;");
         sb.AppendLine("using UnityEngine;");
+        sb.AppendLine("using Fuel.NetFramework.Core;");
         sb.AppendLine();
         sb.AppendLine("public static class NetHandlerGenerated");
         sb.AppendLine("{");

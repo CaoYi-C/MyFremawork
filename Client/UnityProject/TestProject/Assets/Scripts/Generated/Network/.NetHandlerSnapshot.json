@@ -1,5 +1,5 @@
 {
     "handlers": [
-        "TestSocket.LoginResp:10004:LoginPB.LoginRsp:null"
+        "TestSocket.LoginResp:0:LoginPB.LoginRsp:null"
     ]
 }
