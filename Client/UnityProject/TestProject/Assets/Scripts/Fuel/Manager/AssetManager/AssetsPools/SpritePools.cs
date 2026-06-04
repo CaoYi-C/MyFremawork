@@ -1,14 +1,12 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using Fuel.AssetManager;
-using Fuel.AssetManager.AssetsPools;
-using HotFarmework.AssetManager;
 using UnityEngine;
 
-namespace HotFramework.AssetManager.AssetsPools
+namespace Fuel.AssetManager.AssetsPools
 {
     // ReSharper disable once ClassNeverInstantiated.Global
     internal class SpritePools : ReferencePools<Sprite>

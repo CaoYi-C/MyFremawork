@@ -757,11 +757,13 @@ public class ProtoBatchWindowAsync : EditorWindow
         sbLookup.AppendLine("// DO NOT EDIT MANUALLY");
         sbLookup.AppendLine("using System;");
         sbLookup.AppendLine("using System.Collections.Generic;");
+        sbLookup.AppendLine("using Google.Protobuf;");
         sbLookup.AppendLine("using Fuel.NetFramework.Core;");
         sbLookup.AppendLine();
         sbLookup.AppendLine("public partial class ProtoCmds: IProtoCmd {");
         sbLookup.AppendLine();
         sbLookup.AppendLine("    private readonly Dictionary<Type, uint> TypeCmdMap = new Dictionary<Type, uint>();");
+        sbLookup.AppendLine("    private readonly Dictionary<uint, MessageParser> CmdParserMap = new Dictionary<uint, MessageParser>();");
         sbLookup.AppendLine("    public uint GetCmdId<T>()");
         sbLookup.AppendLine("    {");
         sbLookup.AppendLine("       return TypeCmdMap.TryGetValue(typeof(T), out var id) ? id : (uint)0;");
@@ -769,6 +771,12 @@ public class ProtoBatchWindowAsync : EditorWindow
         sbLookup.AppendLine("    public uint GetCmdId(Type type)");
         sbLookup.AppendLine("    {");
         sbLookup.AppendLine("       return TypeCmdMap.TryGetValue(type, out var id) ? id : (uint)0;");
+        sbLookup.AppendLine("    }");
+        sbLookup.AppendLine("    public IMessage Parse(uint cmdId, byte[] data, int offset, int count)");
+        sbLookup.AppendLine("    {");
+        sbLookup.AppendLine("       if (CmdParserMap.TryGetValue(cmdId, out var parser))");
+        sbLookup.AppendLine("           return parser.ParseFrom(data, offset, count);");
+        sbLookup.AppendLine("       return null;");
         sbLookup.AppendLine("    }");
         sbLookup.AppendLine("    public void RegisterAll()");
         sbLookup.AppendLine("    {");
@@ -812,6 +820,7 @@ public class ProtoBatchWindowAsync : EditorWindow
                         ? $"typeof({cls})"
                         : $"typeof({namespaceStr}.{cls})";
                     sbLookup.AppendLine($"        TypeCmdMap.Add(typeof({namespaceStr}.{cls}), {cmd});");
+                    sbLookup.AppendLine($"        CmdParserMap.Add({cmd}, new MessageParser<{namespaceStr}.{cls}>(() => new {namespaceStr}.{cls}()));");
                 }
             }
 

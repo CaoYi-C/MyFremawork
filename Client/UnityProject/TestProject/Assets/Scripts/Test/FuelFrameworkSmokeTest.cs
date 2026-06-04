@@ -7,7 +7,7 @@ using Fuel.Pools;
 using Fuel.Scene;
 using Fuel.Tools;
 using Game.UI.TestPanel;
-using HotFarmework.AssetManager;
+using Fuel.AssetManager;
 using Manager.SceneManager;
 using Manager.UIManager;
 using UnityEngine;

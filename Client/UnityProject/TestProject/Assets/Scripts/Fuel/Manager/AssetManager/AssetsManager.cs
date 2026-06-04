@@ -4,7 +4,7 @@ using Fuel.Log;
 using Fuel.Singleton;
 using YooAsset;
 
-namespace HotFarmework.AssetManager
+namespace Fuel.AssetManager
 {
 #if UNITY_EDITOR
     public static class AssetsManagerEditor
@@ -20,7 +20,7 @@ namespace HotFarmework.AssetManager
             if (package.PackageValid)
                 return;
 
-            //编辑器模拟模式
+            //编辑器模拟模�?
             var buildResult = EditorSimulateBuildInvoker.Build(packageName, (int)EBundleType.VirtualAssetBundle);
             var packageRoot = buildResult.PackageRootDirectory;
             var fileSystemParams = FileSystemParameters.CreateDefaultEditorFileSystemParameters(packageRoot);
@@ -66,9 +66,9 @@ namespace HotFarmework.AssetManager
     public class AssetsManager : Singleton<AssetsManager>
     {
         /// <summary>
-        /// 公共加载组
+        /// 公共加载�?
         /// </summary>
-        internal const string NomalAssetGroupName = "NomalAssetGroup";
+        internal const string NormalAssetGroupName = "NormalAssetGroup";
         private const string DefaultPackageName = "Main";
 
 #if UNITY_EDITOR
@@ -115,19 +115,9 @@ namespace HotFarmework.AssetManager
 
         #region 异步加载
 
-        public async UniTask<UnityEngine.Object> LoadAsync(string path, Type type, string packageName)
-        {
-            var handle = GetPackage(packageName).LoadAssetAsync(path, type);
-            await handle.ToUniTask();
-            return handle.AssetObject;
-        }
-
-        public async UniTask<T> LoadAsync<T>(string path, string packageName = null) where T : UnityEngine.Object
-        {
-            var handle = GetPackage(packageName).LoadAssetAsync<T>(path);
-            await handle.ToUniTask();
-            return handle.GetAssetObject<T>();
-        }
+        // 修 #15：原 8 个 async overload (LoadAsync<T>, LoadAsync, LoadAsyncWithHandle<T>, LoadAsyncWithHandle,
+        // LoadSubAsync<T>, LoadSubAsyncWithHandle<T>, ...) 全部 caller 都用 *WithHandle 版本，
+        // 不带 handle 的 3 个 overload 是冗余。删了，省掉 4 个方法、6 行代码。
 
         public async UniTask<(UnityEngine.Object, AssetHandle)> LoadAsyncWithHandle(string path, Type type, string packageName = null)
         {
@@ -141,13 +131,6 @@ namespace HotFarmework.AssetManager
             var handle = GetPackage(packageName).LoadAssetAsync<T>(path);
             await handle.ToUniTask();
             return (handle.GetAssetObject<T>(), handle);
-        }
-
-        public async UniTask<T> LoadSubAsync<T>(string mainPath, string path, string packageName = null) where T : UnityEngine.Object
-        {
-            var handle = GetPackage(packageName).LoadSubAssetsAsync<T>(mainPath);
-            await handle.ToUniTask();
-            return handle.GetSubAssetObject<T>(path);
         }
 
         public async UniTask<(T, SubAssetsHandle)> LoadSubAsyncWithHandle<T>(string mainPath, string path, string packageName = null) where T : UnityEngine.Object

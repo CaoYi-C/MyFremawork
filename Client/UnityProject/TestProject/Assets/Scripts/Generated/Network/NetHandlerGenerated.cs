@@ -12,7 +12,8 @@ public static class NetHandlerGenerated
 {
     public static void RegisterAll()
     {
+        NetworkManager.Instance.Dispatcher.Register<LoginPB.AcegoLoginReq,LoginPB.AcegoLoginRsp>(0, TestSocket.AcegoLoginResp);
         NetworkManager.Instance.Dispatcher.Register<LoginPB.LoginRsp>(0, TestSocket.LoginResp);
-        Debug.Log("[AutoNetHandler] 已注册 1 个网络回调方法");
+        Debug.Log("[AutoNetHandler] 已注册 2 个网络回调方法");
     }
 }

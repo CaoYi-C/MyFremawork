@@ -110,7 +110,8 @@ namespace Fuel.Scene
         /// <returns></returns>
         protected T FindObjectOfType<T>() where T : Component
         {
-            return GameObject.FindObjectOfType<T>();
+            // Unity 2022.3+ 推荐 FindAnyObjectByType（更快，不再保证顺序但我们这里只用 null 检查）
+            return GameObject.FindAnyObjectByType<T>();
         }
 
         /// <summary>

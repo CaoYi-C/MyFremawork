@@ -1,12 +1,12 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
-using HotFarmework.AssetManager;
 using Fuel.Pools;
+using UnityEngine;
 using Fuel.Singleton;
-using HotFramework.AssetManager.AssetsPools;
+// 父命名空间 Fuel.AssetManager 里的 AssetsManager 等类型无需 using，子命名空间自动可见
 
 namespace Fuel.AssetManager.AssetsPools
 {
@@ -63,36 +63,24 @@ namespace Fuel.AssetManager.AssetsPools
 
         internal async Task<T> GetAsync(string path, string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
-            if (_groupPoos.TryGetValue(groupName, out var matPools))
-            {
-                if (matPools.TryGetValue(path, out var pool))
-                {
-                    var mat = await pool.GetAsync(path, groupName);
-                    return mat;
-                }
-                else
-                {
-                    pool = ObjectPools.Instance.Get<OtherPool<T>>();
-                    matPools.Add(path, pool);
-                    var mat = await pool.GetAsync(path, groupName);
-                    return mat;
-                }
-            }
-            else
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
+            // �ϲ������ظ���֧���Ȱ� group ȡ��û���򽨣��ٰ� path ȡ��û���� pool��
+            if (!_groupPoos.TryGetValue(groupName, out var matPools))
             {
                 matPools = new Dictionary<string, OtherPool<T>>();
-                var pool = ObjectPools.Instance.Get<OtherPool<T>>();
-                _groupPoos.Add(groupName, matPools);
-                matPools.Add(path, pool);
-                var mat = await pool.GetAsync(path, groupName);
-                return mat;
+                _groupPoos[groupName] = matPools;
             }
+            if (!matPools.TryGetValue(path, out var pool))
+            {
+                pool = ObjectPools.Instance.Get<OtherPool<T>>();
+                matPools[path] = pool;
+            }
+            return await pool.GetAsync(path, groupName);
         }
         
         internal void GetAsyncAction(string path, long code,Action<T> action, string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             _loadIndex++;
             if (_loadIndexCheckMap.TryGetValue(groupName, out var callBacks))
             {
@@ -117,30 +105,18 @@ namespace Fuel.AssetManager.AssetsPools
         {
             try
             {
-                if (_groupPoos.TryGetValue(groupName, out var materialPools))
-                {
-                    if (materialPools.TryGetValue(path, out var pool))
-                    {
-                        var mat = await pool.GetAsync(path, groupName);
-                        action.Invoke(index,mat,groupName);
-                    }
-                    else
-                    {
-                        pool = ObjectPools.Instance.Get<OtherPool<T>>();
-                        materialPools.Add(path, pool);
-                        var mat = await pool.GetAsync(path, groupName);
-                        action.Invoke(index,mat,groupName);
-                    }
-                }
-                else
+                if (!_groupPoos.TryGetValue(groupName, out var materialPools))
                 {
                     materialPools = new Dictionary<string, OtherPool<T>>();
-                    var pool = ObjectPools.Instance.Get<OtherPool<T>>();
-                    materialPools.Add(path, pool);
-                    _groupPoos.Add(groupName, materialPools);
-                    var mat = await pool.GetAsync(path, groupName);
-                    action.Invoke(index,mat,groupName);
+                    _groupPoos[groupName] = materialPools;
                 }
+                if (!materialPools.TryGetValue(path, out var pool))
+                {
+                    pool = ObjectPools.Instance.Get<OtherPool<T>>();
+                    materialPools[path] = pool;
+                }
+                var mat = await pool.GetAsync(path, groupName);
+                action.Invoke(index, mat, groupName);
             }
             catch (Exception e)
             {
@@ -177,37 +153,24 @@ namespace Fuel.AssetManager.AssetsPools
 
         internal T GetSync(string path, string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
-            if (_groupPoos.TryGetValue(groupName, out var matPools))
-            {
-                if (matPools.TryGetValue(path, out var pool))
-                {
-                    var mat = pool.GetSync(path, groupName);
-                    return mat;
-                }
-                else
-                {
-                    pool = ObjectPools.Instance.Get<OtherPool<T>>();
-                    var mat = pool.GetSync(path, groupName);
-                    matPools.Add(path, pool);
-                    return mat;
-                }
-            }
-            else
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
+            if (!_groupPoos.TryGetValue(groupName, out var matPools))
             {
                 matPools = new Dictionary<string, OtherPool<T>>();
-                var pool = ObjectPools.Instance.Get<OtherPool<T>>();
-                _groupPoos.Add(groupName, matPools);
-                matPools.Add(path, pool);
-                var mat = pool.GetSync(path, groupName);
-                return mat;
+                _groupPoos[groupName] = matPools;
             }
+            if (!matPools.TryGetValue(path, out var pool))
+            {
+                pool = ObjectPools.Instance.Get<OtherPool<T>>();
+                matPools[path] = pool;
+            }
+            return pool.GetSync(path, groupName);
         }
 
         internal void Recycle(T mat, string groupName = "")
         {
             if (mat == null) return;
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             if (_groupPoos.TryGetValue(groupName, out var matPools))
             {
                 if (matPools.TryGetValue(mat.name, out var pool))
@@ -221,7 +184,7 @@ namespace Fuel.AssetManager.AssetsPools
 
         internal void RecycleByGroup(string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             if (!_groupPoos.TryGetValue(groupName, out var matPools)) return;
             foreach (var pool in matPools.Values)
             {
@@ -231,7 +194,7 @@ namespace Fuel.AssetManager.AssetsPools
 
         internal void DestroyByGroup(string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             if (_loadCallBackMap.TryGetValue(groupName, value: out var loadCallBacks))
             {
                 foreach (var loadCallBack in loadCallBacks)
@@ -314,7 +277,7 @@ namespace Fuel.AssetManager.AssetsPools
 
         internal async Task<T> GetAsync(string path, string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             if (_groupPools.TryGetValue(groupName, out var spritePool))
             {
                 if (spritePool.TryGetValue(path, out var obj))
@@ -333,7 +296,7 @@ namespace Fuel.AssetManager.AssetsPools
 
         internal void GetAsyncAction(string path, long code,Action<T> action, string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             _loadIndex++;
             if (_loadIndexCheckMap.TryGetValue(groupName, out var callBacks))
             {
@@ -400,7 +363,7 @@ namespace Fuel.AssetManager.AssetsPools
 
         internal T GetSync(string path, string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             if (_groupPools.TryGetValue(groupName, out var pool))
             {
                 if (pool.TryGetValue(path, out var obj))
@@ -435,7 +398,7 @@ namespace Fuel.AssetManager.AssetsPools
 
         internal void DestroyByGroup(string groupName)
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             
             if (_loadCallBackMap.TryGetValue(groupName, value: out var loadCallBacks))
             {

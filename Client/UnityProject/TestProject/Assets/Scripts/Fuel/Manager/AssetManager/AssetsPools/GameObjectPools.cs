@@ -5,8 +5,8 @@ using Cysharp.Threading.Tasks;
 using Fuel.Log;
 using Fuel.Pools;
 using Fuel.Singleton;
-using HotFarmework.AssetManager;
-using HotFramework.AssetManager.AssetsPools;
+using Fuel.Pools;
+using Fuel.Singleton;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -52,7 +52,7 @@ namespace Fuel.AssetManager.AssetsPools
 
         public async UniTask<GameObject> GetAsync(string path, string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             if (_groupGameObjectPools.TryGetValue(groupName, out var gameObjectPools))
             {
                 if (gameObjectPools.TryGetValue(path, out var pool))
@@ -117,7 +117,7 @@ namespace Fuel.AssetManager.AssetsPools
 
         internal void GetAsyncAction(string path, long code, Action<GameObject> action, string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             _loadIndex++;
             if (_loadIndexCheckMap.TryGetValue(groupName, out var callBacks))
             {
@@ -166,10 +166,13 @@ namespace Fuel.AssetManager.AssetsPools
 
         public GameObject GetSysnByPrefab(GameObject prefab, string groupName = "")
         {
-            ////if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.Instance.NomalAssetGroupName;
+            // �?prefab.GetInstanceID() 而非 GetHashCode()：Object.GetHashCode 可能在不�?prefab 间碰撞，
+            // 导致不同 prefab 错进同一个池。InstanceID �?Unity 内是唯一稳定 ID�?
+            string poolKey = prefab.GetInstanceID().ToString();
+            ////if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.Instance.NormalAssetGroupName;
             if (_groupGameObjectPools.TryGetValue(groupName, out var gameObjectPools))
             {
-                if (gameObjectPools.TryGetValue(prefab.GetHashCode().ToString(), out var pool))
+                if (gameObjectPools.TryGetValue(poolKey, out var pool))
                 {
                     var go = pool.GetSyncByPrefab();
                     return go;
@@ -177,7 +180,7 @@ namespace Fuel.AssetManager.AssetsPools
                 else
                 {
                     pool = ObjectPools.Instance.Get<GameObjectPool>();
-                    gameObjectPools.Add(prefab.GetHashCode().ToString(), pool);
+                    gameObjectPools.Add(poolKey, pool);
                     pool.InitByPrefab(prefab);
                     var go = pool.GetSyncByPrefab();
                     return go;
@@ -188,7 +191,7 @@ namespace Fuel.AssetManager.AssetsPools
                 gameObjectPools = new Dictionary<string, GameObjectPool>();
                 GameObjectPool pool = ObjectPools.Instance.Get<GameObjectPool>();
                 _groupGameObjectPools.Add(groupName, gameObjectPools);
-                gameObjectPools.Add(prefab.GetHashCode().ToString(), pool);
+                gameObjectPools.Add(poolKey, pool);
                 pool.InitByPrefab(prefab);
                 var go = pool.GetSyncByPrefab();
                 return go;
@@ -207,10 +210,11 @@ namespace Fuel.AssetManager.AssetsPools
             {
                 go.name = name;
             }
-            ////if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.Instance.NomalAssetGroupName;
+            string poolKey = prefab.GetInstanceID().ToString();
+            ////if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.Instance.NormalAssetGroupName;
             if (_groupGameObjectPools.TryGetValue(groupName, out var gameObjectPools))
             {
-                if (gameObjectPools.TryGetValue(prefab.GetHashCode().ToString(), out var pool))
+                if (gameObjectPools.TryGetValue(poolKey, out var pool))
                 {
                     pool.Recycle(go);
                     return;
@@ -221,7 +225,7 @@ namespace Fuel.AssetManager.AssetsPools
 
         public GameObject GetSync(string path, string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             if (_groupGameObjectPools.TryGetValue(groupName, out var gameObjectPools))
             {
                 if (gameObjectPools.TryGetValue(path, out var pool))
@@ -257,7 +261,7 @@ namespace Fuel.AssetManager.AssetsPools
                 name = go.name;
             }
 
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             if (_groupGameObjectPools.TryGetValue(groupName, out var gameObjectPools))
             {
                 if (gameObjectPools.TryGetValue(name, out var pool))
@@ -271,7 +275,7 @@ namespace Fuel.AssetManager.AssetsPools
 
         public void RecycleByGroup(string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             if (!_groupGameObjectPools.TryGetValue(groupName, out var gameObjectPools)) return;
             foreach (var pool in gameObjectPools.Values)
             {
@@ -310,7 +314,7 @@ namespace Fuel.AssetManager.AssetsPools
         /// <param name="groupName"></param>
         public void DestroyByGroup(string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             if (_loadCallBackMap.TryGetValue(groupName, value: out var loadCallBacks))
             {
                 foreach (var loadCallBack in loadCallBacks)
@@ -344,7 +348,7 @@ namespace Fuel.AssetManager.AssetsPools
 
         public void StopLoadByGroup(string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             if (_groupGameObjectPools.TryGetValue(groupName, out var gameObjectPools))
             {
                 foreach (var pool in gameObjectPools.Values)

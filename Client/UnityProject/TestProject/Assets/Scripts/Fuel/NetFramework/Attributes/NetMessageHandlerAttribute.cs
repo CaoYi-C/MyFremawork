@@ -15,9 +15,24 @@ namespace Fuel.NetFramework.Attributes
             get
             {
                 if (_cmdsType == null)
+                {
+                    // 注意：这里用 Type.GetType("ProtoCmds") 字符串查找是有意为之——
+                    // ProtoCmds 是生成代码，可能在 hot-update DLL 里（不在 Assembly-CSharp 中）。
+                    // 强类型 typeof(ProtoCmds) 会让 Fuel 程序集硬依赖它，破坏热更场景。
+                    // 如果需要在 hot-update 之前就拿到正确类型，调用 Initialize(Type) 显式注入。
                     _cmdsType = Type.GetType("ProtoCmds");
+                }
                 return _cmdsType;
             }
+        }
+
+        /// <summary>
+        /// 显式注入 ProtoCmds 类型。常用于 hot-update 之后调一次，让 lookup 走正确版本。
+        /// 重复调用以最后一次为准；传 null 重置回默认的 Type.GetType 字符串查找。
+        /// </summary>
+        public static void Initialize(Type cmdsType)
+        {
+            _cmdsType = cmdsType;
         }
 
         /// <summary>

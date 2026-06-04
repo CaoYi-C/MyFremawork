@@ -25,7 +25,8 @@ namespace Fuel.Singleton
                 {
                     if (_instance == null)
                     {
-                        _instance = FindObjectOfType<T>();
+                        // FindAnyObjectByType 比 FindObjectOfType 快且 Unity 2022.3+ 推荐
+                        _instance = FindAnyObjectByType<T>();
 
                         if (_instance == null)
                         {

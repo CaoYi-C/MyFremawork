@@ -16,45 +16,50 @@ namespace Fuel.NetFramework.Core
     /// </summary>
     public class NetworkManager : MonoSingleton<NetworkManager>
     {
-        /// <summary>
-        /// 当前使用的协议实例
-        /// </summary>
+        // ---- 对外只读状态 ----
         public IProtocol Protocol { get; private set; }
-
-        /// <summary>
-        /// 消息分发器
-        /// </summary>
         public MessageDispatcher Dispatcher { get; private set; }
-
-        /// <summary>
-        /// 命令获取器
-        /// </summary>
         public IProtoCmd CmdGetter { get; private set; }
-
-        /// <summary>
-        /// 心跳管理器
-        /// </summary>
         public HeartbeatManager Heartbeat { get; private set; }
 
-        /// <summary>
-        /// 是否已连接
-        /// </summary>
         public bool IsConnected => Protocol != null && Protocol.IsConnected;
 
-        /// <summary>
-        /// 连接成功事件
-        /// </summary>
+        // ---- 业务事件 ----
         public event Action OnConnectSuccess;
-
-        /// <summary>
-        /// 连接断开事件 (参数: 是否异常断开)
-        /// </summary>
-        public event Action<bool> OnConnectClose;
-
-        /// <summary>
-        /// 网络错误事件
-        /// </summary>
+        public event Action<bool> OnConnectClose;        // bool: 是否异常断开
         public event Action<string> OnConnectError;
+
+        // ---- 心跳 PING/PONG 协议 ----
+        /// <summary>
+        /// PING 命令号。设为 0 关闭自动心跳。
+        /// PING body: 8 字节 big-endian long，客户端时间戳。
+        /// </summary>
+        public uint PingCmdId { get; set; }
+
+        /// <summary>
+        /// PONG 命令号。设为 0 关闭自动收 PONG。
+        /// PONG body: 16 字节 big-endian long[2] = [clientTimestamp, serverTimestamp]。
+        /// </summary>
+        public uint PongCmdId { get; set; }
+
+        /// <summary>
+        /// 自动重连开关（默认 true）。关闭后异常断开时只发事件，不尝试重连。
+        /// </summary>
+        public bool AutoReconnect { get; set; } = true;
+
+        // ---- 重连退避参数 ----
+        private const float InitialReconnectDelay = 1f;
+        private const float MaxReconnectDelay = 30f;
+
+        private float _reconnectDelay = InitialReconnectDelay;
+        private float _reconnectDeadline;     // 下一次允许重连的 Unity 时间（unscaledTime）
+        private int _reconnectAttempts;       // 用于：首次立即重连，后续走退避
+        private ProtocolType _lastProtocolType;
+        private string _lastHost;
+        private int _lastPort;
+
+        // ---- 主线程事件队列 ----
+        private readonly ConcurrentQueue<Action> _mainThreadEventQueue = new ConcurrentQueue<Action>();
 
         protected override void OnInit()
         {
@@ -62,33 +67,25 @@ namespace Fuel.NetFramework.Core
             Heartbeat = new HeartbeatManager();
             Heartbeat.OnHeartbeatTimeout += HandleHeartbeatTimeout;
             Heartbeat.OnMaxRetryExceeded += HandleMaxRetryExceeded;
+            // OnSendPing 在 OnConnected 后 subscribe；这里集中处理，OnConnected 内统一 subscribe/unsubscribe
         }
-        
+
         /// <summary>
-        /// 设置命令获取器
+        /// 设置命令获取器（业务侧实现 IProtoCmd 时调用一次；不调则回退到 ProtoCmdsLookup 反射）
         /// </summary>
-        /// <param name="cmdGetter">命令获取器实例</param>
         public void InitCmdGetter(IProtoCmd cmdGetter)
         {
             CmdGetter = cmdGetter;
             CmdGetter.RegisterAll();
         }
-        /// <summary>
-        /// 连接到服务器 (默认使用 TCP 协议)
-        /// </summary>
-        /// <param name="host">服务器地址</param>
-        /// <param name="port">服务器端口</param>
+
+        #region Connect / Disconnect
+
         public void Connect(string host, int port)
         {
             Connect(ProtocolType.TCP, host, port);
         }
 
-        /// <summary>
-        /// 连接到服务器 (指定协议类型)
-        /// </summary>
-        /// <param name="protocolType">协议类型</param>
-        /// <param name="host">服务器地址</param>
-        /// <param name="port">服务器端口</param>
         public void Connect(ProtocolType protocolType, string host, int port)
         {
             if (IsConnected)
@@ -97,10 +94,18 @@ namespace Fuel.NetFramework.Core
                 return;
             }
 
-            // 清理旧的协议实例
+            // 1. 清理旧实例
             CleanupProtocol();
 
-            // 创建新的协议实例
+            // 2. 重置重连状态：手动 Connect 视为新目标，旧 _lastHost / _reconnectDelay 全部作废
+            _lastProtocolType = protocolType;
+            _lastHost = host;
+            _lastPort = port;
+            _reconnectDelay = InitialReconnectDelay;
+            _reconnectDeadline = 0f;
+            _reconnectAttempts = 0;
+
+            // 3. 建新协议
             Protocol = ProtocolFactory.Create(protocolType);
             Protocol.OnConnected += HandleConnected;
             Protocol.OnDisconnected += HandleDisconnected;
@@ -111,123 +116,157 @@ namespace Fuel.NetFramework.Core
             Protocol.Connect(host, port);
         }
 
-        /// <summary>
-        /// 发送 Protobuf 消息 (自动从 ProtoCmds 查找 cmdId)
-        /// </summary>
-        /// <typeparam name="T">消息类型 (必须在 ProtoCmds 中有对应常量)</typeparam>
-        /// <param name="msg">Protobuf 消息实例</param>
-        public void Send<T>(T msg) where T : IMessage
-        {
-            uint cmdId = CmdGetter.GetCmdId<T>();
-            if (cmdId == 0)
-            {
-                Debug.LogError($"[NetworkManager] No ProtoCmds entry for type '{typeof(T).Name}', cannot send.");
-                return;
-            }
-            Send(cmdId, msg);
-        }
-
-        /// <summary>
-        /// 发送 Protobuf 消息 (手动指定 cmdId)
-        /// </summary>
-        /// <typeparam name="T">消息类型</typeparam>
-        /// <param name="cmdId">消息命令号 (ProtoCmds.Xxx)</param>
-        /// <param name="msg">Protobuf 消息实例</param>
-        public void Send<T>(uint cmdId, T msg) where T : IMessage
-        {
-            if (!IsConnected)
-            {
-                Debug.LogWarning("[NetworkManager] Cannot send, not connected.");
-                return;
-            }
-
-            byte[] body = msg?.ToByteArray();
-            byte[] packet = PacketCodec.Encode(cmdId, body);
-            Protocol.Send(packet);
-        }
-
-        /// <summary>
-        /// 发送原始字节数据 (非 Protobuf 场景)
-        /// </summary>
-        /// <param name="cmdId">消息命令号</param>
-        /// <param name="body">原始字节</param>
-        public void SendRaw(uint cmdId, byte[] body)
-        {
-            if (!IsConnected)
-            {
-                Debug.LogWarning("[NetworkManager] Cannot send, not connected.");
-                return;
-            }
-
-            byte[] packet = PacketCodec.Encode(cmdId, body);
-            Protocol.Send(packet);
-        }
-
-        /// <summary>
-        /// 断开连接
-        /// </summary>
         public void Disconnect()
         {
             if (Protocol == null) return;
+
+            // 主动断开 — 关掉自动重连，避免 HandleDisconnected 触发自动重连
+            _reconnectAttempts = 0;
+            _lastHost = null;
 
             Debug.Log("[NetworkManager] Disconnecting...");
             Protocol.Close();
         }
 
-        /// <summary>
-        /// 主线程事件队列 — 连接/断开/错误事件通过此队列转发到主线程
-        /// </summary>
-        private readonly ConcurrentQueue<Action> _mainThreadEventQueue = new ConcurrentQueue<Action>();
+        #endregion
 
-        /// <summary>
-        /// 每帧驱动消息分发和心跳，同时处理主线程事件队列
-        /// </summary>
+        #region Send
+
+        public bool Send<T>(T msg) where T : IMessage
+        {
+            if (CmdGetter == null)
+            {
+                Debug.LogError("[NetworkManager] CmdGetter is null. Call InitCmdGetter or wire ProtoCmdsLookup. Cannot send.");
+                return false;
+            }
+            uint cmdId = CmdGetter.GetCmdId<T>();
+            if (cmdId == 0)
+            {
+                Debug.LogError($"[NetworkManager] No ProtoCmds entry for type '{typeof(T).Name}', cannot send.");
+                return false;
+            }
+
+            // Req-Rsp 模式：在发包前缓存 request，响应包到达时 dispatcher 会取出并和 rsp 一起 invoke
+            if (Dispatcher != null && Dispatcher.IsRequestResponseHandler(cmdId))
+            {
+                Dispatcher.CacheRequest(cmdId, msg);
+            }
+
+            return Send(cmdId, msg);
+        }
+
+        private bool Send<T>(uint cmdId, T msg) where T : IMessage
+        {
+            if (!IsConnected) { Debug.LogWarning("[NetworkManager] Cannot send, not connected."); return false; }
+            if (Protocol == null) { Debug.LogWarning("[NetworkManager] Cannot send, no protocol instance."); return false; }
+
+            byte[] body = msg?.ToByteArray();
+            byte[] packet = PacketCodec.Encode(cmdId, body);
+            Protocol.Send(packet);
+            return true;
+        }
+
+        public bool SendRaw(uint cmdId, byte[] body)
+        {
+            if (!IsConnected) { Debug.LogWarning("[NetworkManager] Cannot send, not connected."); return false; }
+            if (Protocol == null) { Debug.LogWarning("[NetworkManager] Cannot send, no protocol instance."); return false; }
+
+            byte[] packet = PacketCodec.Encode(cmdId, body);
+            Protocol.Send(packet);
+            return true;
+        }
+
+        #endregion
+
+        #region Update / Lifecycle
+
         private void Update()
         {
-            // 处理连接/断开等事件（从 Socket 线程转发到主线程）
+            // 处理连接/断开/错误事件（从 Socket 线程转发到主线程）
             while (_mainThreadEventQueue.TryDequeue(out Action eventAction))
             {
-                try
-                {
-                    eventAction?.Invoke();
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[NetworkManager] Main thread event error: {e}");
-                }
+                try { eventAction?.Invoke(); }
+                catch (Exception e) { Debug.LogError($"[NetworkManager] Main thread event error: {e}"); }
             }
 
             Dispatcher?.Update();
             Heartbeat?.Tick();
+
+            // 驱动重连退避：把"重连何时尝试"从事件 handler 移到这里，
+            // 避免 _isReconnecting 卡死后永远不再尝试（之前的 bug）
+            DriveReconnect();
         }
 
-        /// <summary>
-        /// 应用退出时清理
-        /// </summary>
         protected override void OnApplicationQuit()
         {
             base.OnApplicationQuit();
             Heartbeat.Stop();
             Heartbeat.OnHeartbeatTimeout -= HandleHeartbeatTimeout;
             Heartbeat.OnMaxRetryExceeded -= HandleMaxRetryExceeded;
+            Heartbeat.OnSendPing -= SendPingInternal;
             CleanupProtocol();
             Dispatcher?.Clear();
         }
 
+        #endregion
+
         #region Protocol Event Handlers
+
+        private void HandleConnected()
+        {
+            _reconnectDelay = InitialReconnectDelay;
+            _reconnectDeadline = 0f;
+            _reconnectAttempts = 0;
+
+            _mainThreadEventQueue.Enqueue(() =>
+            {
+                Debug.Log("[NetworkManager] Connected.");
+                Heartbeat.OnSendPing += SendPingInternal;
+                Heartbeat.Start();
+                Heartbeat.ResetRetryCount();
+                OnConnectSuccess?.Invoke();
+            });
+        }
 
         private void HandleDisconnected(bool isAbnormal)
         {
+            // 总是先解订阅 PING，避免 Stop 后还有 PING 在飞
+            Heartbeat.OnSendPing -= SendPingInternal;
+
             _mainThreadEventQueue.Enqueue(() =>
             {
                 Debug.Log($"[NetworkManager] Disconnected. Abnormal: {isAbnormal}");
                 Heartbeat.Stop();
+
+                // 清掉所有 pending request，避免旧连接的 req 在重连后被新响应用错
+                // （或者更糟：永远等不到响应，handler 不被触发，request 永远占着缓存）
+                Dispatcher?.ClearPendingRequests();
+
                 OnConnectClose?.Invoke(isAbnormal);
+
+                // 异常断开 + 启用自动重连 + 目标存在 → 设置 _reconnectAttempts 让 Update 驱动重连
+                // 首次 _reconnectAttempts=1，deadline 设为 now（立即）；后续 attempt 走退避
+                if (isAbnormal && AutoReconnect && _lastHost != null)
+                {
+                    _reconnectAttempts++;
+                    float delay = (_reconnectAttempts == 1) ? 0f : _reconnectDelay;
+                    _reconnectDeadline = Time.unscaledTime + delay;
+                    _reconnectDelay = Mathf.Min(_reconnectDelay * 2f, MaxReconnectDelay);
+                }
             });
         }
 
         private void HandleDataReceived(uint cmdId, ArraySegment<byte> body)
         {
+            // 在 Socket 线程执行；Dispatcher 内部会把 handler 推到主线程
+            if (PongCmdId != 0 && cmdId == PongCmdId && body.Count >= 16)
+            {
+                long clientTime = PacketCodec.ReadInt64BigEndian(body.Array, body.Offset);
+                long serverTime = PacketCodec.ReadInt64BigEndian(body.Array, body.Offset + 8);
+                _mainThreadEventQueue.Enqueue(() => Heartbeat.HandlePong(clientTime, serverTime));
+                return;
+            }
+
             Dispatcher.Dispatch(cmdId, body);
         }
 
@@ -244,75 +283,77 @@ namespace Fuel.NetFramework.Core
 
         #region Heartbeat
 
-        /// <summary>
-        /// 心跳超时处理（尝试重连）
-        /// </summary>
         private void HandleHeartbeatTimeout()
         {
             Debug.LogWarning($"[NetworkManager] Heartbeat timeout, attempting reconnect in {_reconnectDelay:F1}s...");
             TryReconnect();
         }
 
-        /// <summary>
-        /// 超过最大重连次数（断开连接）
-        /// </summary>
         private void HandleMaxRetryExceeded()
         {
-            Debug.LogError("[NetworkManager] Max retry count exceeded, disconnecting...");
+            Debug.LogError("[NetworkManager] Max retry count exceeded, disconnecting.");
             Disconnect();
         }
 
-        // 重连退避：每次重连失败后加倍延迟（指数退避），到达上限后保持上限
-        private float _reconnectDelay = 1f;
-        private float _reconnectDeadline;   // 下一次允许重连的 Unity 时间
-        private const float InitialReconnectDelay = 1f;
-        private const float MaxReconnectDelay = 30f;
-        private ProtocolType _lastProtocolType;
-        private string _lastHost;
-        private int _lastPort;
+        /// <summary>
+        /// Heartbeat 触发 PING 时回调。把 8 字节时间戳打成 body 并发送。
+        /// </summary>
+        private void SendPingInternal(long clientTimestamp)
+        {
+            if (!IsConnected || PingCmdId == 0) return;
+            byte[] body = new byte[8];
+            PacketCodec.WriteInt64BigEndian(body, 0, clientTimestamp);
+            SendRaw(PingCmdId, body);
+        }
+
+        #endregion
+
+        #region Reconnect
 
         /// <summary>
-        /// 尝试重连（子类可重写自定义重连逻辑）。
-        /// 旧实现是"断开后立即重连"，服务端挂掉时会以最高频反复重连。
-        /// 新实现按指数退避延迟：1s → 2s → 4s → 8s → 16s → 30s (上限)。
+        /// 由 Update 每帧调用，检查是否到了重连时间点。
+        /// 关键：判断"已连接"要看 Protocol.IsConnected，不能看 Protocol != null。
+        /// 断开时 Protocol 引用还在（旧 TcpProtocol 仍被 NetworkManager.Protocol 持有，
+        /// socket 已经在 HandleDisconnect 里置 null），所以 != null 永远是 true，
+        /// 会把 DriveReconnect 永远卡住、永远不调 TryReconnect。
         /// </summary>
-        protected virtual void TryReconnect()
+        private void DriveReconnect()
         {
-            if (Protocol != null)
-            {
-                _lastProtocolType = Protocol.Type;
-                _lastHost = Protocol.Host;
-                _lastPort = Protocol.Port;
-                Protocol.Close();
-            }
-            else if (_lastHost == null)
-            {
-                return; // 没有可重连的目标
-            }
+            if (!AutoReconnect || _lastHost == null) return;
+            if (_reconnectAttempts == 0) return;          // 没有待执行的重连
+            if (Protocol != null && Protocol.IsConnected) return; // 已连接
+            if (Time.unscaledTime < _reconnectDeadline) return;   // 退避未到
 
-            if (Time.unscaledTime < _reconnectDeadline)
-                return; // 退避窗口未到，等待下一帧
-
-            Debug.Log($"[NetworkManager] Reconnecting to {_lastHost}:{_lastPort} (delay was {_reconnectDelay:F1}s)");
-            Connect(_lastProtocolType, _lastHost, _lastPort);
-            _reconnectDeadline = Time.unscaledTime + _reconnectDelay;
-            _reconnectDelay = Mathf.Min(_reconnectDelay * 2f, MaxReconnectDelay);
+            TryReconnect();
         }
 
         /// <summary>
-        /// 连接成功时重置退避状态
+        /// 实际发起一次重连（不检查退避，由 DriveReconnect 负责调度）。
         /// </summary>
-        private void HandleConnected()
+        protected virtual void TryReconnect()
         {
-            _reconnectDelay = InitialReconnectDelay;
-            _reconnectDeadline = 0f;
-            _mainThreadEventQueue.Enqueue(() =>
+            // 暂停心跳，避免重连窗口里继续发 PING 失败刷屏
+            if (Heartbeat != null) Heartbeat.Paused = true;
+
+            // 关闭旧协议（如果还活着）
+            if (Protocol != null)
             {
-                Debug.Log("[NetworkManager] Connected.");
-                Heartbeat.Start();
-                Heartbeat.ResetRetryCount();
-                OnConnectSuccess?.Invoke();
-            });
+                Protocol.OnConnected -= HandleConnected;
+                Protocol.OnDisconnected -= HandleDisconnected;
+                Protocol.OnDataReceived -= HandleDataReceived;
+                Protocol.OnError -= HandleError;
+                try { Protocol.Close(); } catch { /* swallow */ }
+                Protocol = null;
+            }
+
+            Debug.Log($"[NetworkManager] Reconnect attempt {_reconnectAttempts} to {_lastHost}:{_lastPort}");
+
+            Protocol = ProtocolFactory.Create(_lastProtocolType);
+            Protocol.OnConnected += HandleConnected;
+            Protocol.OnDisconnected += HandleDisconnected;
+            Protocol.OnDataReceived += HandleDataReceived;
+            Protocol.OnError += HandleError;
+            Protocol.Connect(_lastHost, _lastPort);
         }
 
         #endregion

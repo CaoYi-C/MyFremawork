@@ -25,12 +25,21 @@ public class TestSocket : MonoBehaviour
     {
         _logText.text = "登录中";
         NetworkManager.Instance.Send(new LoginReq());
-
+        _logText.text = "登录成功";
     }
     [NetMessageHandler(typeof(LoginRsp))]
     public static void LoginResp(LoginRsp resp)
     {
         Debug.Log($"登录成功: {resp.Result}");
+    }
+    public static void AcegoLoginReq(AcegoLoginReq req)
+    {
+        NetworkManager.Instance.Send(new AcegoLoginReq());
+    }
+    [NetMessageHandler(typeof(AcegoLoginReq),typeof(AcegoLoginRsp))]
+    public static void AcegoLoginResp(AcegoLoginReq req, AcegoLoginRsp resp)
+    {
+        Debug.Log($"test");
     }
     // Update is called once per frame
     void Update()

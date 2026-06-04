@@ -43,9 +43,9 @@ public static class NetHandlerGeneratorUtil
                         Debug.LogError($"[NetHandlerGenerator] {type.FullName}.{method.Name} 必须是静态方法！");
                         continue;
                     }
-                    if (method.GetParameters().Length != 1)
+                    if (method.GetParameters().Length > 2)
                     {
-                        Debug.LogError($"[NetHandlerGenerator] {type.FullName}.{method.Name} 参数数量必须为 1！");
+                        Debug.LogError($"[NetHandlerGenerator] {type.FullName}.{method.Name} 参数数量必须为 2 以下！");
                         continue;
                     }
 
@@ -112,10 +112,12 @@ public static class NetHandlerGeneratorUtil
             int cmd = int.Parse(parts[1]);
             if (parts[3] != "null")
             {
+                // Request-Response 模式：注册响应回调，不发送请求
                 sb.AppendLine($"        NetworkManager.Instance.Dispatcher.Register<{parts[2]},{parts[3]}>({cmd}, {id.Replace('+', '.')});");
             }
             else
             {
+                // Push 模式
                 sb.AppendLine($"        NetworkManager.Instance.Dispatcher.Register<{parts[2]}>({cmd}, {id.Replace('+', '.')});");
             }
 

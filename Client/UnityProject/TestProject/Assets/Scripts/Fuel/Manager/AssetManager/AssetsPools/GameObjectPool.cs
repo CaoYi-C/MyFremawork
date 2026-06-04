@@ -19,12 +19,15 @@ namespace Fuel.AssetManager.AssetsPools
 
         private List<GameObject> _createList;
         private List<GameObject> _useList;
+        // 维护"在池中"集合，O(1) 防重入替代 Stack<T>.Contains O(n) 扫描
+        private HashSet<GameObject> _inPoolSet;
 
         public GameObjectPool()
         {
             _createList = new List<GameObject>();
             _useList = new List<GameObject>();
             _pool = new Stack<GameObject>();
+            _inPoolSet = new HashSet<GameObject>();
         }
 
 
@@ -67,6 +70,7 @@ namespace Fuel.AssetManager.AssetsPools
             if (_pool.Count > 0)
             {
                 GameObject go = _pool.Pop();
+                _inPoolSet.Remove(go);
                 if (go == null)
                 {
                     _createList.Remove(go);
@@ -110,6 +114,7 @@ namespace Fuel.AssetManager.AssetsPools
             if (_pool.Count > 0)
             {
                 var go = _pool.Pop();
+                _inPoolSet.Remove(go);
                 if (go == null)
                 {
                     _createList.Remove(go);
@@ -136,6 +141,7 @@ namespace Fuel.AssetManager.AssetsPools
             if (_pool.Count > 0)
             {
                 GameObject go = _pool.Pop();
+                _inPoolSet.Remove(go);
                 if (go == null)
                 {
                     _createList.Remove(go);
@@ -160,11 +166,14 @@ namespace Fuel.AssetManager.AssetsPools
 
         internal void Recycle(GameObject go)
         {
-            if (go == null || _pool.Contains(go)) return;
+            if (go == null) return;
+            // O(1) HashSet 替代 Stack<T>.Contains O(n) 扫描
+            if (!_inPoolSet.Add(go)) return;
             if (_pool.Count >= MaxPoolCount)
             {
                 _createList.Remove(go);
                 _useList.Remove(go);
+                _inPoolSet.Remove(go);
                 DestroyObject(go);
                 return;
             }
@@ -201,6 +210,7 @@ namespace Fuel.AssetManager.AssetsPools
             _useList.Clear();
             _createList.Clear();
             _pool.Clear();
+            _inPoolSet.Clear();
             _baseHandle = null;
             AssetsLoadManager.Instance.Release(_assetName, _groupName);
             _assetName = string.Empty;

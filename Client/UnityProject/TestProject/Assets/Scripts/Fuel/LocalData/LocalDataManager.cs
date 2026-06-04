@@ -53,7 +53,10 @@ namespace Fuel.LocalData
 
         public void Save<T>(string key, T data)
         {
-            SaveString(key, JsonUtility.ToJson(new LocalDataWrapper<T> { data = data }));
+            // JsonUtility 要求包装类型（裸 T 不行）。为了避免每次 Save 都 box 一个 LocalDataWrapper<T>，
+            // 按 T 类型缓存一份 boxed wrapper 实例，反复写入 data 字段。
+            var wrapper = LocalDataWrapperCache<T>.Acquire(data);
+            SaveString(key, JsonUtility.ToJson(wrapper));
         }
 
         public bool TryLoad<T>(string key, out T data)
@@ -80,7 +83,8 @@ namespace Fuel.LocalData
         /// </summary>
         public void SaveDeferred<T>(string key, T data)
         {
-            string json = JsonUtility.ToJson(new LocalDataWrapper<T> { data = data });
+            var wrapper = LocalDataWrapperCache<T>.Acquire(data);
+            string json = JsonUtility.ToJson(wrapper);
             string encoded = EncodeValue(json);
             _pendingSaves[key] = encoded;
             _hasPendingSaves = true;
@@ -171,9 +175,24 @@ namespace Fuel.LocalData
         }
 
         [Serializable]
-        private struct LocalDataWrapper<T>
+        private class LocalDataWrapper<T>
         {
             public T data;
+        }
+
+        /// <summary>
+        /// 按 T 类型缓存一份 wrapper 实例 + 强类型字段，避免每次 Save 都 new + box。
+        /// 主线程单例使用，无需锁。
+        /// </summary>
+        private static class LocalDataWrapperCache<T>
+        {
+            private static readonly LocalDataWrapper<T> _instance = new LocalDataWrapper<T>();
+
+            public static LocalDataWrapper<T> Acquire(T data)
+            {
+                _instance.data = data;
+                return _instance;
+            }
         }
     }
 

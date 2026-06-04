@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using HotFarmework.AssetManager;
 using Fuel.Pools;
 using Fuel.Singleton;
 using UnityEngine.Events;
@@ -30,7 +29,7 @@ namespace Fuel.AssetManager
 
         public AssetsGroup GetAssetGroup(string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             if (_groupMap.TryGetValue(groupName, out var assetsGroup))
             {
                 return assetsGroup;
@@ -43,7 +42,7 @@ namespace Fuel.AssetManager
 
         public void DestoryByGroup(string groupName = "", bool isUnuseAssets = false)
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             if (!_groupMap.TryGetValue(groupName, out var assetsGroup)) return;
             ObjectPools.Instance.Recycle(assetsGroup);
             _groupMap.Remove(groupName);
@@ -53,7 +52,7 @@ namespace Fuel.AssetManager
 
         public void StopLoadByGroup(string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             if (_groupMap.TryGetValue(groupName, out var assetsGroup))
             {
                 assetsGroup.StopLoad();

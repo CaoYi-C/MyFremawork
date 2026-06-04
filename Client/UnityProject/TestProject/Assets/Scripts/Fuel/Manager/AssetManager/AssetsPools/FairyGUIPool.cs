@@ -15,7 +15,7 @@ namespace Framework.Pools
 
         public async UniTask<UnityEngine.Object> GetAsync(string path, Type type, string groupName = "")
         {
-            //if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.Instance.NomalAssetGroupName;
+            //if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.Instance.NormalAssetGroupName;
             if (_groupObjcetPools.TryGetValue(groupName, out var objectPools))
             {
                 if (objectPools.TryGetValue(path, out var obj))
@@ -41,7 +41,7 @@ namespace Framework.Pools
 
         public UnityEngine.Object GetSync(string path, Type type, string groupName = "")
         {
-            //if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.Instance.NomalAssetGroupName;
+            //if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.Instance.NormalAssetGroupName;
             if (_groupObjcetPools.TryGetValue(groupName, out var objectPools))
             {
                 if (objectPools.TryGetValue(path, out var obj))
@@ -68,7 +68,7 @@ namespace Framework.Pools
 
         public void DestroyByGroup(string groupName)
         {
-            //if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.Instance.NomalAssetGroupName;
+            //if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.Instance.NormalAssetGroupName;
             if (_groupObjcetPools != null && _groupObjcetPools.TryGetValue(groupName, out var objectPools))
             {
                 objectPools.Clear();

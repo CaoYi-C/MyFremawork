@@ -1,5 +1,6 @@
 {
     "handlers": [
+        "TestSocket.AcegoLoginResp:0:LoginPB.AcegoLoginReq:LoginPB.AcegoLoginRsp",
         "TestSocket.LoginResp:0:LoginPB.LoginRsp:null"
     ]
 }

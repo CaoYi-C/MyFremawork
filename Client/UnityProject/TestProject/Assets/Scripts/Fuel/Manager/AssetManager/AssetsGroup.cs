@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
-using HotFarmework.AssetManager;
 using Fuel.Pools;
 using UnityEngine;
 using YooAsset;

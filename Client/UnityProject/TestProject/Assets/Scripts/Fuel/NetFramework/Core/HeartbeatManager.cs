@@ -1,4 +1,5 @@
 using System;
+using Fuel.Log;
 using UnityEngine;
 
 namespace Fuel.NetFramework.Core
@@ -31,6 +32,12 @@ namespace Fuel.NetFramework.Core
         public bool IsRunning { get; private set; }
 
         /// <summary>
+        /// 是否暂停（Tick 跳过所有逻辑）。
+        /// 重连期间 NetworkManager 会置 true，避免在 socket 已关闭的情况下继续发 PING 失败刷屏。
+        /// </summary>
+        public bool Paused { get; set; }
+
+        /// <summary>
         /// 当前重连次数
         /// </summary>
         public int CurrentRetryCount { get; private set; }
@@ -60,16 +67,32 @@ namespace Fuel.NetFramework.Core
         private bool _waitingPong;
         private long _pingTimestamp;
 
+        private readonly Func<float> _timeProvider;
+
+        /// <summary>
+        /// 默认构造：使用 UnityEngine.Time.realtimeSinceStartup
+        /// </summary>
+        public HeartbeatManager() : this(() => Time.realtimeSinceStartup) { }
+
+        /// <summary>
+        /// 注入时间源（便于脱离 Unity 进行单元测试）
+        /// </summary>
+        public HeartbeatManager(Func<float> timeProvider)
+        {
+            _timeProvider = timeProvider ?? (() => Time.realtimeSinceStartup);
+        }
+
         /// <summary>
         /// 启动心跳
         /// </summary>
         public void Start()
         {
             IsRunning = true;
+            Paused = false;
             _waitingPong = false;
             CurrentRetryCount = 0;
             _lastSendTime = 0f;
-            _lastReceiveTime = Time.realtimeSinceStartup;
+            _lastReceiveTime = _timeProvider();
         }
 
         /// <summary>
@@ -78,6 +101,7 @@ namespace Fuel.NetFramework.Core
         public void Stop()
         {
             IsRunning = false;
+            Paused = false;
             _waitingPong = false;
         }
 
@@ -94,10 +118,10 @@ namespace Fuel.NetFramework.Core
         /// </summary>
         public void Tick()
         {
-            if (!IsRunning)
+            if (!IsRunning || Paused)
                 return;
 
-            float currentTime = Time.realtimeSinceStartup;
+            float currentTime = _timeProvider();
 
             // 检查是否超时
             if (_waitingPong)
@@ -122,6 +146,8 @@ namespace Fuel.NetFramework.Core
         private void HandleTimeout()
         {
             _waitingPong = false;
+            // 显式把 _lastSendTime 顶到当前时间，避免下次 Tick 立即再发 PING（重连期间 socket 已关）
+            _lastSendTime = _timeProvider();
             CurrentRetryCount++;
 
             if (CurrentRetryCount >= MaxRetryCount)
@@ -143,7 +169,7 @@ namespace Fuel.NetFramework.Core
         {
             _pingTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             _waitingPong = true;
-            _lastSendTime = Time.realtimeSinceStartup;
+            _lastSendTime = _timeProvider();
 
             OnSendPing?.Invoke(_pingTimestamp);
         }
@@ -163,13 +189,13 @@ namespace Fuel.NetFramework.Core
                 return;
 
             _waitingPong = false;
-            _lastReceiveTime = Time.realtimeSinceStartup;
+            _lastReceiveTime = _timeProvider();
 
             // 收到PONG，重置重连计数
             CurrentRetryCount = 0;
 
             long delay = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _pingTimestamp;
-            Debug.Log($"[HeartbeatManager] Pong received, delay: {delay}ms");
+            DebugLogger.Log($"[HeartbeatManager] Pong received, delay: {delay}ms");
 
             OnPongReceived?.Invoke(delay);
         }

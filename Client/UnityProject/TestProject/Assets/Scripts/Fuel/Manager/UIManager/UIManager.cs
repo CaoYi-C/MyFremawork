@@ -286,6 +286,12 @@ namespace Manager.UIManager
             var window = _resourceManager.GetWindow(windowId);
             if (window == null) return null;
 
+            // 记录 reload 前的显示状态。OnRelease 内部会把 IsShow 置为 false，
+            // 但窗口对象本身仍留在 _stack 中（OnRelease 不负责出栈）。
+            // 修 #29：reload 完成后如果原本是显示态，需要重新触发 OnShow 恢复运行时状态
+            // （重注册事件、设 IsShow=true、激活 GameObject），否则窗口会处于"在栈里但 IsShow=false"的撕裂态。
+            bool wasShown = window.IsShow;
+
             window.OnRelease();
 
             var layerRoot = GetLayerRoot(window.LayerId);
@@ -293,13 +299,16 @@ namespace Manager.UIManager
             window.ViewObject = viewObj;
             window.OnReload();
 
-            if (window.IsShow)
+            if (wasShown)
             {
-                viewObj?.SetActive(true);
+                // 复用 OnShow 路径重新激活 + 注册事件 + 触发 OnShowEvent
+                window.OnShow();
+                OnWindowShow?.Invoke(window);
             }
             else
             {
-                viewObj?.SetActive(false);
+                // 未显示态：保持隐藏
+                if (viewObj != null) viewObj.SetActive(false);
             }
 
             return window;

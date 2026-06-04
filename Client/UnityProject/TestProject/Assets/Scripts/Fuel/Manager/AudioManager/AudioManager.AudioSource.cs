@@ -283,7 +283,7 @@ namespace Fuel.Manager.AudioManager
             {
                 _volume = volume;
                 _fadeTargetVolume  = volume;
-                if (State == AudioSourceState.Paused || State == AudioSourceState.Stopped || _as.volume.Equals(volume))
+                if (State == AudioSourceState.Paused || State == AudioSourceState.Stopped || Mathf.Approximately(_as.volume, volume))
                 {
                     return;
                 }

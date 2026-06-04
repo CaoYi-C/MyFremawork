@@ -5,7 +5,7 @@ using Cysharp.Threading.Tasks;
 using Fuel.GameEvent;
 using Fuel.Scene;
 using Fuel.Log;
-using HotFarmework.AssetManager;
+using Fuel.AssetManager;
 using YooAsset;
 
 namespace Manager.SceneManager
@@ -61,29 +61,29 @@ namespace Manager.SceneManager
 
             try
             {
-                // 通知开始加载
+                // 通知开始加�?
                 EventDispatcher.Instance.Dispatch(new Scene_LoadStartEvent
                 {
                     SceneId = sceneId,
                     IsMainScene = true
                 });
 
-                // 卸载所有附加场景
+                // 卸载所有附加场�?
                 await UnloadAllAdditiveScenesAsync();
 
-                // 卸载当前主场景
+                // 卸载当前主场�?
                 if (_currentMainScene != null)
                 {
                     await UnloadSceneAsync(_currentMainScene);
                 }
 
-                // 异步加载新场景
+                // 异步加载新场�?
                 if (!await LoadSceneAsync(sceneInfo, true, sceneData, onProgress))
                     return;
 
                 _currentMainScene = sceneInfo;
 
-                // 通知主场景切换
+                // 通知主场景切�?
                 EventDispatcher.Instance.Dispatch(new Scene_MainSceneChangedEvent
                 {
                     OldSceneId = oldSceneId,
@@ -151,14 +151,14 @@ namespace Manager.SceneManager
 
             try
             {
-                // 通知开始加载
+                // 通知开始加�?
                 EventDispatcher.Instance.Dispatch(new Scene_LoadStartEvent
                 {
                     SceneId = sceneId,
                     IsMainScene = false
                 });
 
-                // 异步加载场景（additive 模式）
+                // 异步加载场景（additive 模式�?
                 if (!await LoadSceneAsync(sceneInfo, false, sceneData, onProgress))
                     return;
 
@@ -203,7 +203,7 @@ namespace Manager.SceneManager
         }
 
         /// <summary>
-        /// 卸载所有附加场景
+        /// 卸载所有附加场�?
         /// </summary>
         /// <param name="onComplete">卸载完成回调</param>
         public void UnloadAllAdditiveScenes(Action onComplete = null)
@@ -215,13 +215,13 @@ namespace Manager.SceneManager
         {
             string sceneId = sceneInfo.SceneId;
 
-            // 通知开始卸载
+            // 通知开始卸�?
             EventDispatcher.Instance.Dispatch(new Scene_UnloadStartEvent
             {
                 SceneId = sceneId
             });
 
-            // 调用场景脚本的 UnregisterEvents 和 OnExit
+            // 调用场景脚本�?UnregisterEvents �?OnExit
             if (_sceneScripts.TryGetValue(sceneId, out var sceneScript))
             {
                 sceneScript.UnregisterEvents();

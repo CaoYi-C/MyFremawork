@@ -10,10 +10,13 @@ namespace Fuel.GameEvent
     /// </summary>
     internal class EventHandlerList<T>
     {
-        private readonly List<Action<T>> _handlers = new List<Action<T>>();
+        // 预设初始容量，减少热路径上 List.Add 触发扩容 + 数组重新分配
+        private const int InitialCapacity = 4;
+
+        private readonly List<Action<T>> _handlers = new List<Action<T>>(InitialCapacity);
         private bool _isInvoking;
-        private readonly List<Action<T>> _pendingAdds = new List<Action<T>>();
-        private readonly List<Action<T>> _pendingRemoves = new List<Action<T>>();
+        private readonly List<Action<T>> _pendingAdds = new List<Action<T>>(InitialCapacity);
+        private readonly List<Action<T>> _pendingRemoves = new List<Action<T>>(InitialCapacity);
 
         public void Add(Action<T> handler)
         {

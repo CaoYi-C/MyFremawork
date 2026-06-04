@@ -4,19 +4,23 @@ using System.Net.Sockets;
 using Fuel.NetFramework.Codec;
 using Fuel.NetFramework.Core;
 using UnityEngine;
+using SocketProtocolType = System.Net.Sockets.ProtocolType;
 
 namespace Fuel.NetFramework.Protocol
 {
     /// <summary>
     /// TCP 协议实现
     /// 基于 System.Net.Sockets.Socket，异步收发，自动处理粘包/拆包
+    /// 接收缓冲区按需倍增（growable），最大不超过 <see cref="Codec.PacketCodec.MaxPacketLength"/> + 头长度
     /// </summary>
     public class TcpProtocol : IProtocol
     {
-        private const int ReceiveBufferSize = 64 * 1024; // 64KB 接收缓冲区
+        private const int InitialBufferSize = 64 * 1024;
+        // 单包上限 (1MB) + Length/CmdId 头 (8B) + 安全余量
+        private const int MaxBufferSize = PacketCodec.MaxPacketLength + PacketCodec.TotalHeaderSize + 16;
 
         private Socket _socket;
-        private readonly byte[] _receiveBuffer = new byte[ReceiveBufferSize];
+        private byte[] _receiveBuffer = new byte[InitialBufferSize];
         private int _bufferOffset; // 缓冲区中已有的数据长度
 
         private readonly object _sendLock = new object();
@@ -40,52 +44,96 @@ namespace Fuel.NetFramework.Protocol
                 return;
             }
 
+            // 先解析地址 — 解析失败时不要 new Socket 避免句柄泄漏
+            IPEndPoint endpoint;
             try
             {
+                endpoint = new IPEndPoint(IPAddress.Parse(host), port);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[TcpProtocol] Invalid endpoint {host}:{port}: {e.Message}");
+                OnError?.Invoke($"Invalid endpoint: {e.Message}");
+                return;
+            }
+
+            // 重置 buffer 状态（如果之前残留）
+            _bufferOffset = 0;
+            if (_receiveBuffer.Length != InitialBufferSize)
+            {
+                _receiveBuffer = new byte[InitialBufferSize];
+            }
+
+            Socket newSocket = null;
+            try
+            {
+                newSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, SocketProtocolType.Tcp);
+                newSocket.NoDelay = true; // 禁用 Nagle
+                newSocket.BeginConnect(endpoint, ConnectCallback, newSocket);
+                _socket = newSocket;
                 Host = host;
                 Port = port;
-                _socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, (System.Net.Sockets.ProtocolType)ProtocolType.TCP);
-                _socket.NoDelay = true; // 禁用 Nagle 算法，减少延迟
-                _bufferOffset = 0;
-
-                var endpoint = new IPEndPoint(IPAddress.Parse(host), port);
-                _socket.BeginConnect(endpoint, ConnectCallback, null);
             }
             catch (Exception e)
             {
                 Debug.LogError($"[TcpProtocol] Connect failed: {e.Message}");
+                try { newSocket?.Close(); } catch { /* swallow */ }
+                _socket = null;
                 OnError?.Invoke($"Connect failed: {e.Message}");
             }
         }
 
         private void ConnectCallback(IAsyncResult ar)
         {
+            // ar.AsyncState 传的是 newSocket，捕获本实例的 _socket（可能已被替换/关闭）
+            var sock = ar.AsyncState as Socket;
             try
             {
-                _socket.EndConnect(ar);
-                Debug.Log("[TcpProtocol] Connected.");
-                OnConnected?.Invoke();
-
-                // 开始接收数据
-                BeginReceive();
+                sock?.EndConnect(ar);
             }
             catch (Exception e)
             {
                 Debug.LogError($"[TcpProtocol] Connect callback error: {e.Message}");
                 OnError?.Invoke($"Connect error: {e.Message}");
-                OnDisconnected?.Invoke(true);
+                HandleDisconnect(true);
+                return;
             }
+
+            // 期间 Close 可能已经发生，_socket != sock
+            if (_socket != sock || sock == null)
+            {
+                try { sock?.Close(); } catch { /* swallow */ }
+                return;
+            }
+
+            Debug.Log("[TcpProtocol] Connected.");
+            OnConnected?.Invoke();
+
+            // 开始接收数据
+            BeginReceive();
         }
 
         private void BeginReceive()
         {
             if (!IsConnected) return;
 
+            // 至少保证有 1 字节可用空间；上限到 MaxBufferSize 后不再增长（仍可能 0 字节可用 = buffer 满）
+            EnsureBufferSpace(1);
+
+            int available = _receiveBuffer.Length - _bufferOffset;
+            if (available <= 0)
+            {
+                // 缓冲区撑到上限仍没有完整包 — 视为协议错误（粘包叠加超出单包上限），断开
+                Debug.LogError($"[TcpProtocol] Receive buffer full ({_receiveBuffer.Length} bytes), disconnecting.");
+                OnError?.Invoke("Receive buffer full");
+                HandleDisconnect(true);
+                return;
+            }
+
             try
             {
                 _socket.BeginReceive(
-                    _receiveBuffer, _bufferOffset,
-                    ReceiveBufferSize - _bufferOffset,
+                    _receiveBuffer, _bufferOffset, available,
                     SocketFlags.None,
                     ReceiveCallback, null);
             }
@@ -95,6 +143,28 @@ namespace Fuel.NetFramework.Protocol
                 OnError?.Invoke($"Receive error: {e.Message}");
                 HandleDisconnect(true);
             }
+        }
+
+        private void EnsureBufferSpace(int additionalBytesNeeded)
+        {
+            int required = _bufferOffset + additionalBytesNeeded;
+            if (_receiveBuffer.Length >= required) return;
+
+            int newSize = _receiveBuffer.Length;
+            while (newSize < required) newSize *= 2;
+            if (newSize > MaxBufferSize) newSize = MaxBufferSize;
+            if (newSize < required)
+            {
+                // 超过单包上限，留给 Decode 抛 InvalidDataException 走断开流程
+                newSize = required;
+            }
+
+            var newBuf = new byte[newSize];
+            if (_bufferOffset > 0)
+            {
+                Buffer.BlockCopy(_receiveBuffer, 0, newBuf, 0, _bufferOffset);
+            }
+            _receiveBuffer = newBuf;
         }
 
         private void ReceiveCallback(IAsyncResult ar)

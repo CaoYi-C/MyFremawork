@@ -1,7 +1,5 @@
 using System;
 using Cysharp.Threading.Tasks;
-using HotFarmework.AssetManager;
-using HotFramework.AssetManager.AssetsPools;
 using Fuel.Singleton;
 using UnityEngine;
 using UnityEngine.Events;
@@ -24,7 +22,7 @@ namespace Fuel.AssetManager
             //UseAsyncLoad = Application.platform == RuntimePlatform.WebGLPlayer;
         }
 
-        #region 程序集内部调用加载接口
+        #region 程序集内部调用加载接�?
         internal async UniTask<T> InternalLoadAsync<T>(string path, string groupName = "") where T : UnityEngine.Object
         {
             var group = AssetsGroupManager.Instance.GetAssetGroup(groupName);
@@ -134,7 +132,7 @@ namespace Fuel.AssetManager
         }
         #endregion
 
-        #region 提供的资源管理接口
+        #region 提供的资源管理接�?
 
         public GameObject GetSyncByPrefab(GameObject prefab, string groupName = "")
         {
@@ -567,7 +565,7 @@ namespace Fuel.AssetManager
         
         public void ReleaseAllByGroup(string groupName = "")
         {
-            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NomalAssetGroupName;
+            if (string.IsNullOrEmpty(groupName)) groupName = AssetsManager.NormalAssetGroupName;
             if (string.IsNullOrEmpty(groupName))
             {
                 DebugLogger.LogWarning("ReleaseAllByGroup groupName is null or empty");

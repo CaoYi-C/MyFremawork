@@ -16,13 +16,15 @@ namespace Fuel.AssetManager.AssetsPools
 
         private readonly List<T> _createList;
         private readonly List<T> _useList;
-
+        // 维护"当前在池中的实例"集合，O(1) 替代 Stack<T>.Contains 的 O(n) 扫描
+        private readonly HashSet<T> _inPoolSet;
 
         public OtherPool()
         {
             _pool = new Stack<T>();
             _createList = new List<T>();
             _useList = new List<T>();
+            _inPoolSet = new HashSet<T>();
         }
 
         internal async Task<bool> InitAsync(string assetName, string groupName)
@@ -48,6 +50,7 @@ namespace Fuel.AssetManager.AssetsPools
             if (_pool.Count > 0)
             {
                 T mat = _pool.Pop();
+                _inPoolSet.Remove(mat);
                 if (mat == null)
                 {
                     _createList.Remove(mat);
@@ -74,6 +77,7 @@ namespace Fuel.AssetManager.AssetsPools
             if (_pool.Count > 0)
             {
                 T mat = _pool.Pop();
+                _inPoolSet.Remove(mat);
                 if (mat == null)
                 {
                     _createList.Remove(mat);
@@ -95,11 +99,15 @@ namespace Fuel.AssetManager.AssetsPools
 
         internal void Recycle(T mat)
         {
-            if (mat == null || _pool.Contains(mat)) return;
+            if (mat == null) return;
+            // O(1) 防重入校验：HashSet 替代 Stack<T>.Contains
+            if (!_inPoolSet.Add(mat)) return;
+
             if (_pool.Count >= MaxPoolCount)
             {
                 _createList.Remove(mat);
                 _useList.Remove(mat);
+                _inPoolSet.Remove(mat);
                 DestroyObject(mat);
                 return;
             }
@@ -125,6 +133,7 @@ namespace Fuel.AssetManager.AssetsPools
             _useList.Clear();
             _createList.Clear();
             _pool.Clear();
+            _inPoolSet.Clear();
             _base = null;
             AssetsLoadManager.Instance.Release(_assetName, _groupName);
             _groupName = string.Empty;
@@ -147,4 +156,5 @@ namespace Fuel.AssetManager.AssetsPools
         }
     }
 }
+
 

@@ -101,14 +101,22 @@ namespace Fuel.Manager.AudioManager
         }
         #endregion
 
+        // 缓存 "MonoSingles" 容器引用，避免每次 Init 都 GameObject.Find 字符串扫
+        private static GameObject _monoSinglesRoot;
+
         protected override void Init()
         {
-            var parent = GameObject.Find("MonoSingles");
-            if (parent == null)
+            // 先在所有已激活场景里找一次；找不到再创建并缓存
+            if (_monoSinglesRoot == null)
             {
-                parent = new GameObject("MonoSingles");
-                GameObject.DontDestroyOnLoad(parent);
+                _monoSinglesRoot = GameObject.Find("MonoSingles");
             }
+            if (_monoSinglesRoot == null)
+            {
+                _monoSinglesRoot = new GameObject("MonoSingles");
+                GameObject.DontDestroyOnLoad(_monoSinglesRoot);
+            }
+            var parent = _monoSinglesRoot;
 
             var audioManager = new GameObject("AudioManager");
             if (parent != null)
@@ -166,10 +174,12 @@ namespace Fuel.Manager.AudioManager
         /// <param name="cb"></param>
         private void GetClip(string clipName, Action<AudioClip> cb)
         {
+            // 旧实现：StartsWith + Replace 两次扫描 + 两次字符串分配（Replace 返回新串）。
+            // 改成：先 StartsWith 判定，再 Substring 一次切片，零分配拷贝（CLR 内部会拷贝但是单次）。
             if (clipName.StartsWith(AudioPath))
             {
-                Debug.LogWarning($"路径错误，请修改对应配置：{clipName}为：{clipName.Replace(AudioPath, "")}");
-                clipName = clipName.Replace(AudioPath, "");
+                Debug.LogWarning($"路径错误，请修改对应配置：{clipName}为：{clipName.Substring(AudioPath.Length)}");
+                clipName = clipName.Substring(AudioPath.Length);
             }
             if (_allClips.TryGetValue(clipName, out AudioClip audioClipExist))
             {
