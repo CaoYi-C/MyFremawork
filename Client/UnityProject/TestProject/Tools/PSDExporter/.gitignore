@@ -1,0 +1,7 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Tool output (uncomment if you want to commit exported PNGs)
+# PSDExport/
