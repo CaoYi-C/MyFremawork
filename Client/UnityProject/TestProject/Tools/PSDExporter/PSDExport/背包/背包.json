@@ -1,0 +1,246 @@
+{
+  "schemaVersion": 1,
+  "sourcePsd": {
+    "name": "背包.psd",
+    "hash": "sha256:08a72dd64b2f98a1732224f9b690e7244de7fac8bb7fbedbd61b441d11f1c516"
+  },
+  "exportedAt": "2026-06-05T22:36:26+08:00",
+  "canvas": {
+    "width": 1080,
+    "height": 1920
+  },
+  "root": {
+    "id": "root",
+    "name": "Root",
+    "type": "group",
+    "visible": true,
+    "opacity": 1.0,
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "w": 1080,
+      "h": 1920
+    },
+    "pivot": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "children": [
+      {
+        "id": "root/使用1",
+        "name": "使用1",
+        "type": "group",
+        "visible": true,
+        "opacity": 1.0,
+        "rect": {
+          "x": 69,
+          "y": 229,
+          "w": 942,
+          "h": 1393
+        },
+        "pivot": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "children": [
+          {
+            "id": "root/使用1/组 126",
+            "name": "组 126",
+            "type": "group",
+            "visible": true,
+            "opacity": 1.0,
+            "rect": {
+              "x": 69,
+              "y": 229,
+              "w": 942,
+              "h": 1393
+            },
+            "pivot": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "children": [
+              {
+                "id": "root/使用1/组 126/bg_bg",
+                "name": "bg_bg",
+                "type": "image",
+                "visible": true,
+                "opacity": 1.0,
+                "rect": {
+                  "x": 69,
+                  "y": 229,
+                  "w": 942,
+                  "h": 1393
+                },
+                "pivot": {
+                  "x": 0.0,
+                  "y": 0.0
+                },
+                "imageHash": "sha256:4e39c39baaa11b67ef7e88c18af7257062e816743ad089d3db695bbffec79029",
+                "imageFile": "images\\bg_bg.png",
+                "imageTransparent": true
+              },
+              {
+                "id": "root/使用1/组 126/btn_use",
+                "name": "btn_use",
+                "type": "button",
+                "visible": true,
+                "opacity": 1.0,
+                "rect": {
+                  "x": 350,
+                  "y": 1434,
+                  "w": 382,
+                  "h": 155
+                },
+                "pivot": {
+                  "x": 0.0,
+                  "y": 0.0
+                },
+                "imageHash": "sha256:76b785546e2c1714386cbebfe306051d7a9d42b0a61f23f6bf6e8acc3b42acee",
+                "imageFile": "images\\btn_use.png",
+                "imageTransparent": true
+              }
+            ]
+          },
+          {
+            "id": "root/使用1/panel_gouxuan_gou",
+            "name": "panel_gouxuan_gou",
+            "type": "image",
+            "visible": true,
+            "opacity": 1.0,
+            "rect": {
+              "x": 199,
+              "y": 833,
+              "w": 59,
+              "h": 44
+            },
+            "pivot": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "imageHash": "sha256:f569b6c787dd7a9d02405a7c7c17fd45106e8070740a803c7a8efbff2451aaaf",
+            "imageFile": "images\\panel_gouxuan_gou.png",
+            "imageTransparent": true
+          },
+          {
+            "id": "root/使用1/bg_gouxuan_kuang_拷贝_4",
+            "name": "bg_gouxuan_kuang_拷贝_4",
+            "type": "image",
+            "visible": true,
+            "opacity": 1.0,
+            "rect": {
+              "x": 194,
+              "y": 1084,
+              "w": 48,
+              "h": 48
+            },
+            "pivot": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "imageHash": "sha256:2175c358870b98d070e9bc05816065921073d260877e6171ad85fc7176d96310",
+            "imageFile": "images\\bg_gouxuan_kuang_拷贝_4.png",
+            "imageTransparent": true
+          },
+          {
+            "id": "root/使用1/组 127",
+            "name": "组 127",
+            "type": "group",
+            "visible": true,
+            "opacity": 1.0,
+            "rect": {
+              "x": 101,
+              "y": 1181,
+              "w": 877,
+              "h": 220
+            },
+            "pivot": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "children": [
+              {
+                "id": "root/使用1/组 127/组 120",
+                "name": "组 120",
+                "type": "group",
+                "visible": true,
+                "opacity": 1.0,
+                "rect": {
+                  "x": 211,
+                  "y": 1283,
+                  "w": 659,
+                  "h": 80
+                },
+                "pivot": {
+                  "x": 0.0,
+                  "y": 0.0
+                },
+                "children": [
+                  {
+                    "id": "root/使用1/组 127/组 120/组 119",
+                    "name": "组 119",
+                    "type": "group",
+                    "visible": true,
+                    "opacity": 1.0,
+                    "rect": {
+                      "x": 211,
+                      "y": 1283,
+                      "w": 659,
+                      "h": 80
+                    },
+                    "pivot": {
+                      "x": 0.0,
+                      "y": 0.0
+                    },
+                    "children": [
+                      {
+                        "id": "root/使用1/组 127/组 120/组 119/btn_orange",
+                        "name": "btn_orange",
+                        "type": "button",
+                        "visible": true,
+                        "opacity": 1.0,
+                        "rect": {
+                          "x": 342,
+                          "y": 1285,
+                          "w": 76,
+                          "h": 78
+                        },
+                        "pivot": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "imageHash": "sha256:904a19a3791bc4612cd4326f0603e5e2c70af7960633e63fc965b55158c9b36d",
+                        "imageFile": "images\\btn_orange.png",
+                        "imageTransparent": true
+                      },
+                      {
+                        "id": "root/使用1/组 127/组 120/组 119/btn_gray",
+                        "name": "btn_gray",
+                        "type": "button",
+                        "visible": true,
+                        "opacity": 1.0,
+                        "rect": {
+                          "x": 663,
+                          "y": 1283,
+                          "w": 76,
+                          "h": 78
+                        },
+                        "pivot": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "imageHash": "sha256:110ed4dd2d62d218201a04f1d6096a271cee230f0895025fd6e13e1c34d51a74",
+                        "imageFile": "images\\btn_gray.png",
+                        "imageTransparent": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
