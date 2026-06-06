@@ -48,6 +48,7 @@ namespace PSDImporter.Editor
             public int imagesOverwritten;
             public int imagesSkippedSameContent;
             public int imagesSkippedByUser;
+            public int sourceImagesCleanedUp;
         }
 
         /// <summary>
@@ -108,18 +109,41 @@ namespace PSDImporter.Editor
             // Pre-compute variable names + binding metadata on every node.
             AssignVariableNames(doc.root);
 
+            // Resolve imageOutputRoot once — used by both the pre-scan
+            // (to know where to look for conflicts) and the copy step.
+            var imageOutputRoot = string.IsNullOrEmpty(settings.imageOutputRoot)
+                ? "Assets/PSDImages"
+                : settings.imageOutputRoot;
+
+            // Pre-scan for image conflicts and (if any) let the user
+            // decide per-image whether to overwrite the existing PNG.
+            // The resolver returns null only if the user clicked Cancel,
+            // which aborts the entire import.
+            var conflicts = PreScanImageConflicts(doc, jsonPath, imageOutputRoot);
+            Dictionary<string, bool> imageResolutions = null;
+            if (conflicts.Count > 0)
+            {
+                imageResolutions = ImageConflictResolverWindow.Resolve(conflicts);
+                if (imageResolutions == null)
+                {
+                    report.warnings.Add(
+                        "Import cancelled by user at the image conflict resolver.");
+                    return report;
+                }
+            }
+
             // Copy PNGs into imageOutputRoot/<psdName>/ + build the
-            // id→asset-path map used by the image attachment step. May
-            // prompt the user about overwriting existing files.
+            // id→asset-path map used by the image attachment step.
+            // Honors the user's per-image resolutions from the
+            // conflict resolver; if there were no conflicts, every
+            // non-conflicting image is copied normally.
             var imageStats = SetImagePathResolver(
-                doc, jsonPath,
-                string.IsNullOrEmpty(settings.imageOutputRoot)
-                    ? "Assets/PSDImages"
-                    : settings.imageOutputRoot);
+                doc, jsonPath, imageOutputRoot, imageResolutions);
             report.imagesCopied              = imageStats.copied;
             report.imagesOverwritten         = imageStats.overwritten;
             report.imagesSkippedSameContent  = imageStats.skippedSameContent;
             report.imagesSkippedByUser       = imageStats.skippedByUser;
+            report.sourceImagesCleanedUp     = imageStats.sourceCleanedUp;
 
             // Build / rebuild the prefab.
             var prefabDir = Path.Combine(settings.prefabOutputRoot, className);
@@ -815,9 +839,17 @@ namespace PSDImporter.Editor
         /// as Asset paths. If a file with the same name already exists
         /// in the destination with different content, the user is asked
         /// via EditorUtility.DisplayDialogComplex (Yes / No / Yes to all).
+        ///
+        /// If `manualResolutions` is non-null (typically produced by
+        /// the ImageConflictResolverWindow), every layer present in the
+        /// dict gets its pre-decided outcome — no popup is shown. This
+        /// is the new "preview both images before deciding" path.
+        /// Layers NOT in the dict still go through the legacy dialog
+        /// (handy for one-off scripts).
         /// </summary>
         public static ImageCopyStats SetImagePathResolver(
-            PsdDocument doc, string jsonPath, string imageOutputRoot)
+            PsdDocument doc, string jsonPath, string imageOutputRoot,
+            Dictionary<string, bool> manualResolutions = null)
         {
             var stats = new ImageCopyStats();
             s_imagePathOverride = new Dictionary<string, string>();
@@ -861,6 +893,41 @@ namespace PSDImporter.Editor
                     continue;
                 }
 
+                // If the user already decided this layer's fate in the
+                // ImageConflictResolverWindow, honor it without a popup.
+                if (manualResolutions != null
+                    && manualResolutions.TryGetValue(n.id, out var overwrite))
+                {
+                    var existingExists = File.Exists(dstAbs);
+                    if (overwrite)
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(dstAbs) ?? "");
+                        File.Copy(srcPath, dstAbs, overwrite: true);
+                        stats.Add(existingExists
+                            ? ImageCopyDecision.Overwritten
+                            : ImageCopyDecision.Copied);
+                    }
+                    else
+                    {
+                        if (existingExists)
+                        {
+                            stats.Add(ImageCopyDecision.SkippedByUser);
+                        }
+                        else
+                        {
+                            // No existing file — we still need the image
+                            // for the prefab, so copy it.
+                            Directory.CreateDirectory(Path.GetDirectoryName(dstAbs) ?? "");
+                            File.Copy(srcPath, dstAbs, overwrite: false);
+                            stats.Add(ImageCopyDecision.Copied);
+                        }
+                    }
+                    s_imagePathOverride[n.id] = dstRel;
+                    continue;
+                }
+
+                // No pre-decision — fall back to the legacy per-file
+                // yes/no/yes-to-all dialog.
                 var newHash = Sha256OfFile(srcPath);
                 if (TryCopyOrPrompt(srcPath, dstAbs, newHash, ref overwriteAll, ref noOverwriteAll, out var decision))
                 {
@@ -871,7 +938,143 @@ namespace PSDImporter.Editor
                 //       don't bind this image to the prefab.
             }
             AssetDatabase.Refresh();
+
+            // If the user wants us to clean up the Python tool's working
+            // folder, drop the source PNGs (Unity already has its own
+            // copies in imageOutputRoot). Keep the JSON and cache so
+            // incremental re-imports still work.
+            var activeSettings = GetActiveSettings();
+            if (activeSettings != null && activeSettings.deleteSourceImagesAfterImport)
+            {
+                stats.sourceCleanedUp = CleanupPythonOutput(jsonPath, activeSettings);
+            }
+
             return stats;
+        }
+
+        /// <summary>
+        /// Walk the document and find every image-bearing layer whose
+        /// destination file already exists AND has a different sha256
+        /// from the new PNG. Returned list is empty when there are no
+        /// conflicts (caller can skip opening the resolver UI in that
+        /// case). Used by the conflict resolver window to show the user
+        /// a preview of every diff before deciding.
+        /// </summary>
+        public static List<ImageConflictResolverWindow.ImageConflict> PreScanImageConflicts(
+            PsdDocument doc, string jsonPath, string imageOutputRoot)
+        {
+            var result = new List<ImageConflictResolverWindow.ImageConflict>();
+            if (doc == null) return result;
+            var jsonDir = Path.GetDirectoryName(Path.GetFullPath(jsonPath)) ?? "";
+            var psdName = SanitizeClassName(
+                Path.GetFileNameWithoutExtension(doc.sourcePsd.name));
+            var rootRel = imageOutputRoot.Replace('\\', '/').TrimEnd('/');
+            var rootAbs = Path.GetFullPath(
+                Path.Combine(Path.GetDirectoryName(Application.dataPath) ?? "", rootRel));
+
+            int scanned = 0, srcMissing = 0, dstMissing = 0, identical = 0;
+
+            foreach (var n in doc.root.SelfAndDescendants())
+            {
+                if (!n.HasImage || string.IsNullOrEmpty(n.imageFile)) continue;
+                scanned++;
+                var srcPath = Path.Combine(jsonDir, n.imageFile).Replace('\\', '/');
+                var fileName = Path.GetFileName(n.imageFile);
+                var dstRel = $"{rootRel}/{psdName}/{fileName}";
+                var dstAbs = Path.Combine(rootAbs, psdName, fileName)
+                                    .Replace('\\', '/');
+
+                if (!File.Exists(srcPath)) { srcMissing++; continue; }
+                if (!File.Exists(dstAbs)) { dstMissing++; continue; }
+
+                var newHash = Sha256OfFile(srcPath);
+                var existingHash = Sha256OfFile(dstAbs);
+                if (newHash == existingHash) { identical++; continue; }  // same content → not a conflict
+
+                result.Add(new ImageConflictResolverWindow.ImageConflict
+                {
+                    layerId           = n.id,
+                    layerName         = n.name,
+                    psdName           = psdName,
+                    newImagePath      = srcPath,
+                    existingImagePath = dstAbs,
+                    newSizeBytes      = (int)new FileInfo(srcPath).Length,
+                    existingSizeBytes = (int)new FileInfo(dstAbs).Length,
+                    newHash           = ShortHash(newHash),
+                    existingHash      = ShortHash(existingHash),
+                });
+            }
+
+            Debug.Log(
+                $"[PSDImporter] PreScanImageConflicts: scanned={scanned} " +
+                $"srcMissing={srcMissing} dstMissing={dstMissing} " +
+                $"existingIdentical={identical} → {result.Count} conflict(s) to review");
+            return result;
+        }
+
+        private static string ShortHash(string full) =>
+            full.Length >= 22 ? full.Substring(0, 22) : full;
+
+        /// <summary>
+        /// Delete the source PNGs the Python tool wrote under
+        /// <psdExportRoot>/<psdName>/images/. The JSON and cache stay
+        /// (needed for incremental re-imports).
+        /// </summary>
+        public static int CleanupPythonOutput(string jsonPath, PSDImporterSettings settings, ImageCopyStats stats = null)
+        {
+            if (string.IsNullOrEmpty(jsonPath) || settings == null) return 0;
+            var jsonDir = Path.GetDirectoryName(Path.GetFullPath(jsonPath));
+            if (string.IsNullOrEmpty(jsonDir) || !Directory.Exists(jsonDir)) return 0;
+
+            // The Python tool writes the layout like:
+            //   <psdExportRoot>/<psdName>/<psdName>.json
+            //   <psdExportRoot>/<psdName>/_psd_cache.json
+            //   <psdExportRoot>/<psdName>/images/*.png
+            //
+            // We only nuke the images/ subdir; the JSON and cache stay.
+            var imagesDir = Path.Combine(jsonDir, "images");
+            if (!Directory.Exists(imagesDir)) return 0;
+
+            int deleted = 0;
+            try
+            {
+                foreach (var f in Directory.GetFiles(imagesDir))
+                {
+                    try
+                    {
+                        File.Delete(f);
+                        deleted++;
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogWarning($"[PSDImporter] Could not delete {f}: {e.Message}");
+                    }
+                }
+                // Remove the (now empty) images/ folder itself.
+                if (Directory.Exists(imagesDir)
+                    && Directory.GetFileSystemEntries(imagesDir).Length == 0)
+                {
+                    Directory.Delete(imagesDir);
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[PSDImporter] Cleanup failed for {imagesDir}: {e.Message}");
+            }
+
+            if (deleted > 0)
+            {
+                Debug.Log($"[PSDImporter] Cleaned up {deleted} source PNG(s) from {imagesDir}");
+                if (stats != null)
+                {
+                    // Surface the count in the import report so the user
+                    // sees it in the EditorWindow.
+                    // (Reusing 'overwritten' as "files cleaned up" is a bit
+                    //  of a stretch, but we don't have a dedicated field
+                    //  and overwriting count is conceptually adjacent.)
+                }
+            }
+            return deleted;
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -886,6 +1089,7 @@ namespace PSDImporter.Editor
             public int overwritten;
             public int skippedSameContent;
             public int skippedByUser;
+            public int sourceCleanedUp;     // PNGs deleted from psdExportRoot after copy
 
             public void Add(ImageCopyDecision d)
             {
@@ -900,7 +1104,8 @@ namespace PSDImporter.Editor
 
             public override string ToString() =>
                 $"copied={copied} overwritten={overwritten} " +
-                $"skippedSame={skippedSameContent} skippedByUser={skippedByUser}";
+                $"skippedSame={skippedSameContent} skippedByUser={skippedByUser} " +
+                $"sourceCleaned={sourceCleanedUp}";
         }
 
         /// <summary>

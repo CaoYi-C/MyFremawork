@@ -48,6 +48,13 @@ namespace PSDImporter.Editor
                  "texture settings manually.")]
         public bool autoSetSpriteImporter = true;
 
+        [Tooltip("After a successful import, delete the source PNGs the " +
+                 "Python tool wrote under <psdExportRoot>/<PsdName>/images/. " +
+                 "Unity has its own copy in imageOutputRoot, so the source " +
+                 "files are redundant. Keeps the export folder tidy. " +
+                 "The JSON + cache stay (needed for incremental re-imports).")]
+        public bool deleteSourceImagesAfterImport = true;
+
         [Tooltip("Auto-generate UIBindData + NodeProvider + Window code " +
                  "using the existing UIBindCodeGenerator. Turn this off " +
                  "if you only want the raw prefab.")]

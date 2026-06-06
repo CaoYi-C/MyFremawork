@@ -16,7 +16,10 @@ MonoBehaviour:
   pythonExecutable: python
   pythonScriptPath: 
   prefabOutputRoot: Assets/PSDImport
-  autoGenerateUIBind: 1
+  imageOutputRoot: Assets/PSDImages
+  autoSetSpriteImporter: 1
+  deleteSourceImagesAfterImport: 1
+  autoGenerateUIBind: 0
   defaultLayer: 1
   fallbackFont: {fileID: 0}
   fontSearchRoot: Assets
