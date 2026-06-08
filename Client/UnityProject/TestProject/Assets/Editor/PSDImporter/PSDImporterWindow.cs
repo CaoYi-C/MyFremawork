@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
+using UnityEditorInternal;
 using UnityEngine;
 
 namespace PSDImporter.Editor
@@ -36,10 +37,17 @@ namespace PSDImporter.Editor
         private SerializedObject     _settingsSO;   // null until a settings asset is assigned
         private SerializedProperty   _prefabOutputRootProp;
         private SerializedProperty   _imageOutputRootProp;
+        private SerializedProperty   _prefabNameOverrideProp;
 
         private List<JsonEntry> _entries = new List<JsonEntry>();
         private string _lastReport = "";
         private Vector2 _scroll;
+
+        // PSD files the user has dragged into the window (or picked via
+        // the file dialog). Drives the "选中 PSD 并转换 + 导入" button.
+        // Absolute paths (not Assets/-relative) because psd_to_json.py
+        // reads them off disk. Empty list ⇒ button is disabled.
+        private List<string> _droppedPsdPaths = new List<string>();
 
         // debounce for auto-scan
         private double _nextRefresh;
@@ -156,11 +164,11 @@ namespace PSDImporter.Editor
         {
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
-                GUILayout.Label("PSD Importer", EditorStyles.boldLabel);
+                GUILayout.Label("PSD 导入器", EditorStyles.boldLabel);
                 GUILayout.FlexibleSpace();
-                if (GUILayout.Button("Scan", EditorStyles.toolbarButton, GUILayout.Width(60)))
+                if (GUILayout.Button("刷新", EditorStyles.toolbarButton, GUILayout.Width(60)))
                     Scan();
-                if (GUILayout.Button("Help", EditorStyles.toolbarButton, GUILayout.Width(60)))
+                if (GUILayout.Button("帮助", EditorStyles.toolbarButton, GUILayout.Width(60)))
                     DrawHelp();
             }
         }
@@ -173,10 +181,10 @@ namespace PSDImporter.Editor
         {
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
-                EditorGUILayout.LabelField("Settings", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField("设置", EditorStyles.boldLabel);
 
                 var newSettings = (PSDImporterSettings)EditorGUILayout.ObjectField(
-                    "Settings asset", _settings, typeof(PSDImporterSettings), false);
+                    "设置资产", _settings, typeof(PSDImporterSettings), false);
                 if (newSettings != _settings)
                 {
                     _settings = newSettings;
@@ -187,11 +195,11 @@ namespace PSDImporter.Editor
                 if (_settings == null)
                 {
                     EditorGUILayout.HelpBox(
-                        "⚠ No settings asset. Create one via the Project window:\n" +
-                        "  Right-click → Create → PSD Importer → Settings.\n" +
-                        "Then drag it into the field above.",
+                        "⚠ 没有设置资产。在 Project 窗口里创建一个:\n" +
+                        "  右键 → Create → PSD Importer → Settings。\n" +
+                        "然后拖到上面的字段里。",
                         MessageType.None);
-                    if (GUILayout.Button("Create default settings asset"))
+                    if (GUILayout.Button("创建默认设置资产"))
                     {
                         _settings = CreateDefaultSettings();
                         BindSerializedProperties();
@@ -207,13 +215,30 @@ namespace PSDImporter.Editor
                 {
                     _settingsSO.Update();
                     if (_prefabOutputRootProp != null)
-                        EditorGUILayout.PropertyField(_prefabOutputRootProp,
-                            new GUIContent("Prefab output (Assets/)"));
+                        DrawAssetsFolderField(_prefabOutputRootProp, "Prefab 输出 (Assets/)");
                     if (_imageOutputRootProp != null)
-                        EditorGUILayout.PropertyField(_imageOutputRootProp,
-                            new GUIContent("Image output root (Assets/)"));
+                        DrawAssetsFolderField(_imageOutputRootProp, "图片输出根 (Assets/)");
+                    // Prefab name override. Empty = use the PSD file's
+                    // name as-is. Set to a custom value (e.g.
+                    // "LoginView") to drive the prefab filename, the
+                    // subfolder under prefabOutputRoot, the root
+                    // GameObject name, the generated NodeProvider +
+                    // Window class names, and the UIBindData asset
+                    // name — all five in lockstep. Useful when one
+                    // PSD holds several alternative UIs (toggle the
+                    // others' group visibility off) and you want a
+                    // friendly English name for the generated code.
+                    if (_prefabNameOverrideProp != null)
+                    {
+                        EditorGUILayout.PropertyField(_prefabNameOverrideProp,
+                            new GUIContent("Prefab 名称覆盖"));
+                        EditorGUILayout.LabelField(
+                            "  (空 = 用 PSD 文件名;非空会同时驱动预制体文件名、子目录、" +
+                            "类名、UIBindData 资产名,五个保持一致)",
+                            EditorStyles.miniLabel);
+                    }
                     EditorGUILayout.LabelField(
-                        "  (each PSD → <imageOutputRoot>/<PsdName>/<layerName>.png)",
+                        "  (每个 PSD → <imageOutputRoot>/<PsdName>/<layerName>.png)",
                         EditorStyles.miniLabel);
                     if (_settingsSO.ApplyModifiedProperties())
                     {
@@ -233,14 +258,423 @@ namespace PSDImporter.Editor
 
         private void DrawActions()
         {
+            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+            {
+                EditorGUILayout.LabelField("从 PSD 一键导入", EditorStyles.boldLabel);
+
+                // Visual list of staged files (ReorderableList — drag to
+                // reorder, +/- buttons to add/remove, full file path
+                // visible on hover). Plus a "添加…" button + drop zone
+                // The list's footer "+" / "-" buttons (drawn by
+                // ReorderableList) plus the toolbar "+" / "🗑" in
+                // DrawPsdListHeader give the user all the add/remove
+                // affordances they need. The import button at the
+                // bottom runs Python + build for everything in the list.
+                DrawPsdStagingList();
+                EditorGUILayout.Space(4);
+                DrawPsdImportButton();
+            }
+
             using (new EditorGUILayout.HorizontalScope())
             {
-                GUI.enabled = _settings != null;
-                if (GUILayout.Button("📁  选中 PSD 并转换 + 导入", GUILayout.Height(34)))
-                    PickAndImportPsd();
-                if (GUILayout.Button("🐍 Test", GUILayout.Width(60), GUILayout.Height(34)))
+                if (GUILayout.Button("🐍 测试 Python", GUILayout.Height(24)))
                     TestPython();
+            }
+        }
+
+        // Cached ReorderableList for the staged-PSDs table. Built lazily
+        // on first draw so we don't fight the window's enable/disable
+        // lifecycle.
+        private ReorderableList _psdList;
+        private ReorderableList PsdList
+        {
+            get
+            {
+                if (_psdList == null)
+                {
+                    _psdList = new ReorderableList(
+                        _droppedPsdPaths, typeof(string),
+                        draggable: true,
+                        // Hide Unity's default header so the empty-state
+                        // doesn't render the English "List is Empty"
+                        // placeholder. We draw our own Chinese header
+                        // (with the same "+" / "-" affordances in the
+                        // footer) right before DoLayoutList in
+                        // DrawPsdStagingList.
+                        displayHeader: false,
+                        displayAddButton: true,     // built-in "+" button (footer left of "-")
+                        displayRemoveButton: true); // built-in "-" button (footer right of "+")
+                    _psdList.onAddDropdownCallback = (Rect buttonRect, ReorderableList list) =>
+                    {
+                        // The built-in "+" button's default behaviour just
+                        // appends a default(string) entry — useless for
+                        // us. Replace it with the OS file picker so the
+                        // footer "+" is a real "add PSD" action.
+                        var picked = EditorUtility.OpenFilePanel("选择 PSD 文件", "", "psd");
+                        if (!string.IsNullOrEmpty(picked)) AddPsdPaths(new[] { picked }, null);
+                    };
+                    _psdList.drawElementCallback = (rect, index, active, focused) =>
+                    {
+                        if (index < 0 || index >= _droppedPsdPaths.Count) return;
+                        var path = _droppedPsdPaths[index];
+                        var name = Path.GetFileName(path);
+                        // First column: filename (bold), truncated with
+                        // middle ellipsis if it doesn't fit.
+                        var nameRect = new Rect(rect.x, rect.y + 2, rect.width * 0.55f - 4,
+                                                rect.height - 4);
+                        GUI.Label(nameRect, new GUIContent(name,
+                            path), EditorStyles.boldLabel);
+                        // Second column: directory (greyed, tooltip = full path).
+                        var dirRect = new Rect(nameRect.xMax + 8, rect.y + 2,
+                                               rect.width * 0.45f - 8, rect.height - 4);
+                        var dir = Path.GetDirectoryName(path) ?? "";
+                        GUI.Label(dirRect, new GUIContent(dir, path),
+                            EditorStyles.miniLabel);
+                    };
+                    _psdList.onChangedCallback = list =>
+                    {
+                        // ReorderableList already mutates the underlying
+                        // list when the user drags a row. Nothing to do,
+                        // but we keep the hook so future logic (e.g. a
+                        // "remember order" cache) has a place to land.
+                    };
+                }
+                return _psdList;
+            }
+        }
+
+        private void DrawPsdStagingList()
+        {
+            // Empty state: a tall drop zone so dragging .psd files onto
+            // the window still works. Non-empty state: a single thin
+            // "drag here to add" strip below the list (drawn in
+            // DrawPsdStagingDrop).
+            if (_droppedPsdPaths.Count == 0) DrawEmptyDropZone();
+
+            // Always render the ReorderableList so the footer "+"/"-" buttons
+            // are visible — even when the list is empty, the user can hit
+            // "+" to open the file picker. We hide ReorderableList's
+            // default English header (see PsdList ctor) and draw our own
+            // Chinese label here, with the same row of "添加…/清空" buttons
+            // on the right for symmetry.
+            DrawPsdListHeader();
+            PsdList.DoLayoutList();
+            DrawPsdStagingDrop();
+        }
+
+        // Custom header for the PSD staging list. Drawn right before
+        // ReorderableList.DoLayoutList() and acts as the "title" of the
+        // table. Right-aligned action buttons (添加 / 清空) keep the
+        // visual link to the list, even though the real "+" / "-" lives
+        // in the ReorderableList footer.
+        private void DrawPsdListHeader()
+        {
+            using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
+            {
+                GUILayout.Label(
+                    _droppedPsdPaths.Count == 0
+                        ? "待导入的 PSD 文件(空)"
+                        : $"待导入的 PSD 文件 ({_droppedPsdPaths.Count})",
+                    EditorStyles.boldLabel);
+                GUILayout.FlexibleSpace();
                 GUI.enabled = true;
+            }
+        }
+
+        // Full-row drop area that lives underneath the ReorderableList.
+        // Lets the user add more files without having to click "添加".
+        // We rely on a Rect we get from the last visible row of the
+        // ReorderableList — if the list is empty this isn't called.
+        private void DrawPsdStagingDrop()
+        {
+            // Reserve a thin strip below the list for "drag here to add".
+            var rect = GUILayoutUtility.GetRect(0, 18, GUILayout.ExpandWidth(true));
+            var isHovering = rect.Contains(Event.current.mousePosition)
+                             && DragAndDrop.paths != null
+                             && DragAndDrop.paths.Length > 0;
+            var prevColor = GUI.color;
+            if (isHovering) GUI.color = new Color(0.6f, 0.85f, 1f, 0.4f);
+            GUI.Box(rect, "  ⬇  拖入 .psd 文件到此处可继续添加", EditorStyles.helpBox);
+            GUI.color = prevColor;
+
+            switch (Event.current.type)
+            {
+                case EventType.DragUpdated:
+                    if (rect.Contains(Event.current.mousePosition))
+                    {
+                        DragAndDrop.visualMode = HasAnyPsd(DragAndDrop.paths, DragAndDrop.objectReferences)
+                            ? DragAndDropVisualMode.Copy
+                            : DragAndDropVisualMode.Rejected;
+                        Event.current.Use();
+                    }
+                    break;
+                case EventType.DragPerform:
+                    if (rect.Contains(Event.current.mousePosition))
+                    {
+                        DragAndDrop.AcceptDrag();
+                        AddPsdPaths(DragAndDrop.paths, DragAndDrop.objectReferences);
+                        Event.current.Use();
+                    }
+                    break;
+            }
+        }
+
+        private void DrawEmptyDropZone()
+        {
+            var rect = GUILayoutUtility.GetRect(0, 70, GUILayout.ExpandWidth(true));
+            var isHovering = rect.Contains(Event.current.mousePosition)
+                             && DragAndDrop.paths != null
+                             && DragAndDrop.paths.Length > 0;
+            var prevColor = GUI.color;
+            if (isHovering) GUI.color = new Color(0.6f, 0.85f, 1f, 0.4f);
+            GUI.Box(rect,
+                "📂  把 .psd 文件拖到这里或点下方“+”选文件",
+                EditorStyles.helpBox);
+            GUI.color = prevColor;
+
+            switch (Event.current.type)
+            {
+                case EventType.DragUpdated:
+                    if (rect.Contains(Event.current.mousePosition))
+                    {
+                        DragAndDrop.visualMode = HasAnyPsd(DragAndDrop.paths, DragAndDrop.objectReferences)
+                            ? DragAndDropVisualMode.Copy
+                            : DragAndDropVisualMode.Rejected;
+                        Event.current.Use();
+                    }
+                    break;
+                case EventType.DragPerform:
+                    if (rect.Contains(Event.current.mousePosition))
+                    {
+                        DragAndDrop.AcceptDrag();
+                        AddPsdPaths(DragAndDrop.paths, DragAndDrop.objectReferences);
+                        Event.current.Use();
+                    }
+                    break;
+            }
+        }
+
+        private void DrawPsdImportButton()
+        {
+            var ready = _settings != null && _droppedPsdPaths.Count > 0;
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUI.enabled = ready;
+                var label = _droppedPsdPaths.Count == 1
+                    ? "✅  转换 + 导入选中的 PSD"
+                    : $"✅  转换 + 导入 {_droppedPsdPaths.Count} 个 PSD";
+                if (GUILayout.Button(label, GUILayout.Height(32)))
+                {
+                    ImportDroppedPsds();
+                }
+                GUI.enabled = true;
+            }
+        }
+
+        // Filter the dropped paths down to ones that look like PSD
+        // files. Returns true if at least one is kept — used to set
+        // DragAndDrop.visualMode.
+        private static bool HasAnyPsd(string[] paths, UnityEngine.Object[] objects)
+        {
+            if (objects != null)
+            {
+                foreach (var o in objects)
+                {
+                    var p = AssetDatabase.GetAssetPath(o);
+                    if (p.EndsWith(".psd", System.StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+            if (paths != null)
+            {
+                foreach (var p in paths)
+                {
+                    if (p.EndsWith(".psd", System.StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        // Merge new PSD paths into the list, deduped, keeping existing
+        // order. We accept both raw OS paths (from Finder) and Unity
+        // project asset references (drag from Project window).
+        private void AddPsdPaths(string[] paths, UnityEngine.Object[] objects)
+        {
+            var added = 0;
+            if (objects != null)
+            {
+                foreach (var o in objects)
+                {
+                    var ap = AssetDatabase.GetAssetPath(o);
+                    if (string.IsNullOrEmpty(ap)) continue;
+                    if (!ap.EndsWith(".psd", System.StringComparison.OrdinalIgnoreCase)) continue;
+                    var abs = Path.GetFullPath(ap).Replace('\\', '/');
+                    if (_droppedPsdPaths.Contains(abs)) continue;
+                    _droppedPsdPaths.Add(abs);
+                    added++;
+                }
+            }
+            if (paths != null)
+            {
+                foreach (var p in paths)
+                {
+                    if (string.IsNullOrEmpty(p)) continue;
+                    if (!p.EndsWith(".psd", System.StringComparison.OrdinalIgnoreCase)) continue;
+                    if (Directory.Exists(p))
+                    {
+                        // User dropped a folder — pick up every PSD inside.
+                        foreach (var f in Directory.GetFiles(p, "*.psd",
+                                     SearchOption.TopDirectoryOnly))
+                        {
+                            var abs = Path.GetFullPath(f).Replace('\\', '/');
+                            if (_droppedPsdPaths.Contains(abs)) continue;
+                            _droppedPsdPaths.Add(abs);
+                            added++;
+                        }
+                    }
+                    else if (File.Exists(p))
+                    {
+                        var abs = Path.GetFullPath(p).Replace('\\', '/');
+                        if (_droppedPsdPaths.Contains(abs)) continue;
+                        _droppedPsdPaths.Add(abs);
+                        added++;
+                    }
+                }
+            }
+            if (added > 0)
+            {
+                Debug.Log($"[PSDImporter] Added {added} PSD path(s) to drop list (now {_droppedPsdPaths.Count} total).");
+                // Adding files means the staging list is now non-empty.
+                // Whatever stale "no files found" message might have been
+                // sitting in _lastReport is no longer relevant — clear
+                // it so it doesn't get rendered above the new list.
+                if (_droppedPsdPaths.Count > 0) _lastReport = "";
+            }
+        }
+
+        // Run the same per-file flow as the old "📁" button, but iterate
+        // over every staged path instead of prompting for a single one.
+        private void ImportDroppedPsds()
+        {
+            if (_droppedPsdPaths.Count == 0) return;
+            if (_settings == null)
+            {
+                _lastReport = "没有设置资产。拖一个到上面的「设置资产」字段里。";
+                return;
+            }
+            var scriptPath = _settings.GetPythonScriptPath();
+            if (scriptPath == null)
+            {
+                _lastReport = "psd_to_json.py 没找到。\n" +
+                              "在 Settings 资产的 Inspector 里设「psd_to_json.py 路径」," +
+                              "或放到 <ProjectRoot>/Tools/PSDExporter/psd_to_json.py。";
+                return;
+            }
+
+            int success = 0, failed = 0;
+            var failedNames = new List<string>();
+            // Snapshot — the user could conceivably drag more in
+            // mid-import and we don't want to pick those up here.
+            var snapshot = _droppedPsdPaths.ToList();
+            foreach (var psdPath in snapshot)
+            {
+                if (!File.Exists(psdPath))
+                {
+                    failed++;
+                    failedNames.Add($"{Path.GetFileName(psdPath)} (文件不存在)");
+                    continue;
+                }
+                _lastReport = $"🔄  正在处理 {Path.GetFileName(psdPath)} ({success + failed + 1}/{snapshot.Count})…";
+                Repaint();
+                try
+                {
+                    var ok = RunOnePsd(psdPath);
+                    if (ok) success++;
+                    else
+                    {
+                        failed++;
+                        failedNames.Add(Path.GetFileName(psdPath));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    failedNames.Add($"{Path.GetFileName(psdPath)} ({ex.GetType().Name})");
+                    Debug.LogException(ex);
+                }
+            }
+
+            _lastReport = failed == 0
+                ? $"✅  全部 {success} 个 PSD 处理完成。"
+                : $"⚠ 完成 {success},失败 {failed}。\n失败的文件:\n  - " +
+                  string.Join("\n  - ", failedNames);
+
+            _droppedPsdPaths.Clear();
+
+            EditorApplication.delayCall += () =>
+            {
+                _needsImmediateScan = true;
+                Repaint();
+            };
+        }
+
+        // Runs Python + PSDImporter.Import for one PSD file. Returns
+        // true on full success, false on any failure (Python non-zero
+        // exit, missing JSON, or Import threw).
+        private bool RunOnePsd(string psdPath)
+        {
+            var exportRoot = _settings.GetPsdExportRootAbsolute();
+            var args = new[] { psdPath, "--out", exportRoot };
+            var psdName = Path.GetFileNameWithoutExtension(psdPath);
+
+            PythonRunner.RunResult result;
+            try
+            {
+                EditorUtility.DisplayProgressBar(
+                    "PSD Importer",
+                    $"Converting {psdName}.psd via Python…",
+                    0.3f);
+                result = PythonRunner.Run(_settings.pythonExecutable, scriptPath: _settings.GetPythonScriptPath(), args);
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+            }
+
+            if (!result.ok)
+            {
+                _lastReport = $"❌  Python failed for {psdName} " +
+                              $"(exit={result.exitCode}):\n{result.stderr}";
+                Debug.LogError($"[PSDImporter] {result.stderr}");
+                return false;
+            }
+
+            var jsonPath = Path.Combine(exportRoot, psdName, psdName + ".json");
+            if (!File.Exists(jsonPath))
+            {
+                _lastReport = $"❌  Python succeeded for {psdName} " +
+                              $"but JSON not found:\n{jsonPath}";
+                return false;
+            }
+
+            try
+            {
+                var report = PSDImporter.Import(
+                    jsonPath, _settings, _settings.autoGenerateUIBind);
+                // Stash the report on the global _lastReport only for the
+                // last one — partial results get logged but don't
+                // clobber the running "next file" message.
+                Debug.Log($"[PSDImporter] {psdName} done: " +
+                          $"+{report.addedCount} -{report.removedCount} " +
+                          $"~{report.contentChangedCount} (prefab={report.prefabPath})");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _lastReport = $"❌  Import threw for {psdName}:\n{ex.Message}";
+                Debug.LogException(ex);
+                return false;
             }
         }
 
@@ -249,15 +683,15 @@ namespace PSDImporter.Editor
             if (_settings == null) return;   // can't list without export root
             var exportRoot = _settings.GetPsdExportRootAbsolute();
             EditorGUILayout.LabelField(
-                $"Found {_entries.Count} PSD file(s) in '{_settings.psdExportRoot}'",
+                $"在 '{_settings.psdExportRoot}' 里找到 {_entries.Count} 个 PSD",
                 EditorStyles.boldLabel);
             _scroll = EditorGUILayout.BeginScrollView(_scroll, GUILayout.MinHeight(160));
             if (_entries.Count == 0)
             {
                 EditorGUILayout.HelpBox(
-                    $"ℹ No <name>.json files found under {exportRoot}.\n" +
-                    "Click 📁 above to run the Python tool on a PSD, or:\n" +
-                    "  python psd_to_json.py path/to/MyUI.psd --out " + _settings.psdExportRoot,
+                    $"ℹ 在 {exportRoot} 下没找到 <名称>.json 文件。\n" +
+                    "点上面的 📁 让插件帮你跑 Python,或者手动跑:\n" +
+                    "  python psd_to_json.py 路径/到/MyUI.psd --out " + _settings.psdExportRoot,
                     MessageType.None);
             }
             else
@@ -279,7 +713,7 @@ namespace PSDImporter.Editor
                             0, 16, GUILayout.ExpandWidth(true), GUILayout.Height(16));
                         var elided = ElideMiddle(e.jsonPath, PathStyle, pathRect.width);
                         GUI.Label(pathRect, new GUIContent(elided, e.jsonPath), PathStyle);
-                        if (GUILayout.Button("Import", GUILayout.Width(72)))
+                        if (GUILayout.Button("导入", GUILayout.Width(72)))
                             ImportOne(e);
                     }
                 }
@@ -292,10 +726,10 @@ namespace PSDImporter.Editor
             using (new EditorGUILayout.HorizontalScope())
             {
                 GUI.enabled = _settings != null;
-                if (GUILayout.Button("Import All (changed only)"))
+                if (GUILayout.Button("全部导入(仅变更)"))
                     ImportChanged();
                 GUILayout.FlexibleSpace();
-                if (GUILayout.Button("Reveal export folder", GUILayout.Width(160)))
+                if (GUILayout.Button("打开导出目录", GUILayout.Width(160)))
                 {
                     if (_settings == null) return;
                     var abs = _settings.GetPsdExportRootAbsolute();
@@ -324,6 +758,16 @@ namespace PSDImporter.Editor
                 "Re-running either path updates only changed layers (incremental).\n\n" +
                 "If the new image conflicts with an existing one, a preview\n" +
                 "window appears so you can compare before deciding.\n\n" +
+                "Prefab name override:\n" +
+                "  Empty (default) → prefab named after the PSD file.\n" +
+                "  Set a value (e.g. 'LoginView') → that name drives\n" +
+                "  the prefab file, its subfolder, the root GameObject,\n" +
+                "  the generated NodeProvider + Window classes, and the\n" +
+                "  UIBindData asset. Useful when one PSD holds multiple\n" +
+                "  alternative UIs (toggle the others' group visibility off).\n" +
+                "  Changing the override does NOT auto-migrate a previous\n" +
+                "  import — the old prefab stays where it was. Move it\n" +
+                "  manually or re-import the PSD fresh.\n\n" +
                 "Layer prefixes (full list in Tools/PSDExporter/PREFIXES.md):\n" +
                 "  btn_/txt_/img_/icon_/bg_/panel_/progress_/mask_/item_/fx_\n" +
                 "  input_/scroll_/toggle_/slider_  (v1 partial — image only)\n" +
@@ -439,118 +883,6 @@ namespace PSDImporter.Editor
             };
         }
 
-        private void PickAndImportPsd()
-        {
-            try
-            {
-                if (_settings == null)
-                {
-                    _lastReport = "No settings asset. Drag one into the Settings field above.";
-                    return;
-                }
-                Debug.Log("[PSDImporter] PickAndImportPsd: click received");
-                Repaint();
-
-                var scriptPath = _settings.GetPythonScriptPath();
-                if (scriptPath == null)
-                {
-                    _lastReport = "psd_to_json.py not found.\n" +
-                                  "Open the Settings asset's Inspector and set 'Python script', or " +
-                                  "place it at <ProjectRoot>/Tools/PSDExporter/psd_to_json.py.";
-                    return;
-                }
-                Debug.Log($"[PSDImporter] Using script: {scriptPath}");
-
-                Debug.Log("[PSDImporter] About to show file dialog…");
-                var psdPath = EditorUtility.OpenFilePanel("选择 PSD 文件", "", "psd");
-                if (string.IsNullOrEmpty(psdPath))
-                {
-                    Debug.Log("[PSDImporter] File dialog cancelled.");
-                    return;
-                }
-                Debug.Log($"[PSDImporter] Selected PSD: {psdPath}");
-
-                var psdName = Path.GetFileNameWithoutExtension(psdPath);
-                _lastReport = $"🔄  Running Python on {psdName}…";
-                Repaint();
-
-                var exportRoot = _settings.GetPsdExportRootAbsolute();
-                Debug.Log($"[PSDImporter] Export root: {exportRoot}");
-                var args = new[] { psdPath, "--out", exportRoot };
-
-                PythonRunner.RunResult result;
-                try
-                {
-                    EditorUtility.DisplayProgressBar(
-                        "PSD Importer",
-                        $"Converting {psdName}.psd via Python…",
-                        0.3f);
-                    Debug.Log($"[PSDImporter] Spawning: {_settings.pythonExecutable} {scriptPath} {string.Join(" ", args)}");
-                    result = PythonRunner.Run(_settings.pythonExecutable, scriptPath, args);
-                    Debug.Log($"[PSDImporter] Python exit={result.exitCode} in {result.duration.TotalSeconds:F1}s");
-                }
-                finally
-                {
-                    EditorUtility.ClearProgressBar();
-                }
-
-                if (!result.ok)
-                {
-                    _lastReport = $"❌  Python failed (exit={result.exitCode}, " +
-                                  $"{result.duration.TotalSeconds:F1}s):\n{result.stderr}";
-                    Debug.LogError($"[PSDImporter] {result.stderr}");
-                    Repaint();
-                    return;
-                }
-
-                var jsonPath = Path.Combine(exportRoot, psdName, psdName + ".json");
-                Debug.Log($"[PSDImporter] Looking for JSON: {jsonPath}");
-                if (!File.Exists(jsonPath))
-                {
-                    _lastReport = $"❌  Python succeeded but JSON not found:\n{jsonPath}\n\n" +
-                                  $"stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}";
-                    Repaint();
-                    return;
-                }
-
-                PSDImporter.ImportReport report;
-                try
-                {
-                    Debug.Log("[PSDImporter] Calling PSDImporter.Import…");
-                    report = PSDImporter.Import(jsonPath, _settings, _settings.autoGenerateUIBind);
-                }
-                catch (Exception ex)
-                {
-                    _lastReport = $"❌  Import threw:\n{ex.Message}";
-                    Debug.LogException(ex);
-                    Repaint();
-                    return;
-                }
-
-                _lastReport = "✅  " + FormatReport(psdName, report)
-                    + $"\n\n(Python {result.duration.TotalSeconds:F1}s, " +
-                      $"exit={result.exitCode})";
-                EditorApplication.delayCall += () =>
-                {
-                    _needsImmediateScan = true;
-                    Repaint();
-                };
-
-                if (!string.IsNullOrEmpty(report.prefabPath))
-                {
-                    var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(report.prefabPath);
-                    if (asset != null) EditorGUIUtility.PingObject(asset);
-                }
-            }
-            catch (Exception outerEx)
-            {
-                _lastReport = $"❌  Outer exception:\n{outerEx.GetType().Name}: {outerEx.Message}\n\n" +
-                              $"{outerEx.StackTrace}";
-                Debug.LogException(outerEx);
-                Repaint();
-            }
-        }
-
         private void TestPython()
         {
             if (_settings == null)
@@ -609,11 +941,57 @@ namespace PSDImporter.Editor
                 _settingsSO = null;
                 _prefabOutputRootProp = null;
                 _imageOutputRootProp = null;
+                _prefabNameOverrideProp = null;
                 return;
             }
             _settingsSO = new SerializedObject(_settings);
             _prefabOutputRootProp = _settingsSO.FindProperty("prefabOutputRoot");
             _imageOutputRootProp = _settingsSO.FindProperty("imageOutputRoot");
+            _prefabNameOverrideProp = _settingsSO.FindProperty("prefabNameOverride");
+        }
+
+        // A path field with a "📁…" browse button. Always constrained to
+        // Assets/ (project-relative). Mirrors the same control on the
+        // Settings asset's Inspector so the two UIs feel consistent.
+        private static void DrawAssetsFolderField(SerializedProperty prop, string label)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.PropertyField(prop, new GUIContent(label));
+                if (GUILayout.Button("📁…", GUILayout.Width(36)))
+                {
+                    var current = ResolveAssetsRelative(prop.stringValue);
+                    var picked = EditorUtility.OpenFolderPanel("选择 " + label, current, "");
+                    if (!string.IsNullOrEmpty(picked))
+                    {
+                        prop.stringValue = MakeProjectRelative(picked);
+                    }
+                }
+            }
+        }
+
+        // Resolve a (possibly Assets/-relative) path to an absolute path
+        // rooted under the project. Used as the initial directory of the
+        // OpenFolderPanel dialog so the user lands somewhere sensible.
+        private static string ResolveAssetsRelative(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return Application.dataPath;
+            if (Path.IsPathRooted(value)) return value;
+            var projectRoot = Path.GetDirectoryName(Application.dataPath) ?? "";
+            return Path.GetFullPath(Path.Combine(projectRoot, value));
+        }
+
+        // Convert an absolute path picked by the dialog back to the
+        // Assets/-relative form the field stores (so it survives
+        // project moves / re-clones cleanly).
+        private static string MakeProjectRelative(string absolute)
+        {
+            var projectRoot = Path.GetDirectoryName(Application.dataPath) ?? "";
+            var norm = absolute.Replace('\\', '/').TrimEnd('/');
+            var pr = projectRoot.Replace('\\', '/').TrimEnd('/');
+            if (norm.StartsWith(pr + "/", System.StringComparison.OrdinalIgnoreCase))
+                return norm.Substring(pr.Length + 1);
+            return norm;
         }
 
         // ─── settings asset bootstrap ──────────────────────────────

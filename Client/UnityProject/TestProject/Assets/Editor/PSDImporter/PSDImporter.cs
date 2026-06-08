@@ -87,6 +87,25 @@ namespace PSDImporter.Editor
             var prevCache = IncrementalTracker.LoadOrCreate(cachePath);
             var diff = IncrementalTracker.Diff(doc, prevCache);
 
+            // The "fullyUnchanged" path is fast but it can be wrong: the
+            // user may have manually deleted the generated prefab between
+            // imports. The cache + JSON haven't changed, so the diff
+            // says "skip" — but the user clearly wants the prefab back.
+            // In that case force a rebuild.
+            if (diff.fullyUnchanged
+                && !string.IsNullOrEmpty(prevCache.lastImportedPrefabPath)
+                && !File.Exists(Path.GetFullPath(
+                    Path.Combine(
+                        Path.GetDirectoryName(Application.dataPath) ?? "",
+                        prevCache.lastImportedPrefabPath))))
+            {
+                Debug.Log(
+                    $"[PSDImporter] '{doc.sourcePsd.name}' content unchanged, " +
+                    $"but '{prevCache.lastImportedPrefabPath}' is missing " +
+                    "on disk — forcing a rebuild.");
+                diff.fullyUnchanged = false;
+            }
+
             if (diff.fullyUnchanged)
             {
                 report.skipped = true;
@@ -101,8 +120,12 @@ namespace PSDImporter.Editor
             report.contentChangedCount  = diff.ContentChangedCount;
             report.sourceChanged        = diff.sourceChanged;
 
-            // Derive class name from PSD file name.
-            var className = SanitizeClassName(Path.GetFileNameWithoutExtension(doc.sourcePsd.name));
+            // Derive class name. If the user set a prefabNameOverride on
+            // the Settings asset, that wins (drives prefab filename,
+            // subfolder, root GameObject, NodeProvider + Window class
+            // names, and UIBindData asset name — all five stay in
+            // lockstep). Otherwise fall back to the PSD file name.
+            var className = ResolveClassName(doc, settings);
             report.providerClassName = className + "NodeProvider";
             report.windowClassName   = className + "Window";
 
@@ -504,6 +527,24 @@ namespace PSDImporter.Editor
             img.preserveAspect = false;
             img.color = Color.white;
 
+            // 9-slice: set Image type to Sliced so the sprite's
+            // configured `spriteBorder` is respected at runtime. The
+            // border itself was set on the TextureImporter in
+            // ConfigureSlicedSprites (called from SetImagePathResolver).
+            //
+            // IMPORTANT: check the actual border values, not just
+            // `slice != null`. Unity's JsonUtility constructs a default
+            // instance of any [Serializable] class field that's missing
+            // from the JSON, so `node.slice` is *never* null after
+            // deserialization — it's an empty PsdSlice with l=t=r=b=0.
+            // A pure null-check would mark every single Image in the
+            // prefab as Sliced.
+            if (node.slice != null
+                && (node.slice.l | node.slice.t | node.slice.r | node.slice.b) != 0)
+            {
+                img.type = Image.Type.Sliced;
+            }
+
             // Raycast policy:
             //   interactive (button / input / scroll / slider / toggle) → on
             //   decorative  (img / icon / bg / panel / mask / progress / item / fx) → off
@@ -815,6 +856,30 @@ namespace PSDImporter.Editor
             return result;
         }
 
+        /// <summary>
+        /// Decide what the base name for this import is. Drives the
+        /// prefab filename, the subfolder under prefabOutputRoot, the
+        /// root GameObject name, the NodeProvider + Window class names,
+        /// the UIBindData asset name, AND the per-PSD subfolder under
+        /// imageOutputRoot — all five have to agree or the import
+        /// breaks in subtle ways (image not found, UIBind class not
+        /// found, etc.).
+        ///
+        /// Resolution order:
+        ///   1. <c>settings.prefabNameOverride</c> — if non-empty, this
+        ///      is what we use, after SanitizeClassName.
+        ///   2. Otherwise the PSD file name (without extension).
+        /// </summary>
+        private static string ResolveClassName(PsdDocument doc, PSDImporterSettings settings)
+        {
+            var overrideName = settings != null ? settings.prefabNameOverride : null;
+            if (!string.IsNullOrWhiteSpace(overrideName))
+            {
+                return SanitizeClassName(overrideName.Trim());
+            }
+            return SanitizeClassName(Path.GetFileNameWithoutExtension(doc.sourcePsd.name));
+        }
+
         private static PSDImporterSettings GetActiveSettings()
         {
             // Don't cache: the user may have edited the asset in the
@@ -854,8 +919,10 @@ namespace PSDImporter.Editor
             var stats = new ImageCopyStats();
             s_imagePathOverride = new Dictionary<string, string>();
             var jsonDir = Path.GetDirectoryName(Path.GetFullPath(jsonPath)) ?? "";
-            var psdName = SanitizeClassName(
-                Path.GetFileNameWithoutExtension(doc.sourcePsd.name));
+            // Use the same name the importer will use for the prefab
+            // subfolder + class name. Otherwise images and the prefab
+            // would land in different folders and nothing would link.
+            var psdName = ResolveClassName(doc, GetActiveSettings());
 
             // imageOutputRoot is something like "Assets/PSDImages" — make
             // sure both halves agree on the separator style.
@@ -949,7 +1016,70 @@ namespace PSDImporter.Editor
                 stats.sourceCleanedUp = CleanupPythonOutput(jsonPath, activeSettings);
             }
 
+            // Configure 9-slice borders on any image whose node has
+            // `slice` metadata. The PNGs were just imported (or
+            // refreshed) above, so TextureImporter is available now.
+            ConfigureSlicedSprites(doc);
+
             return stats;
+        }
+
+        /// <summary>
+        /// For every image-bearing node with `slice` metadata, set the
+        /// Sprite's border on the TextureImporter. This is what makes
+        /// the Sprite a 9-slice — the actual `type=Sliced` on the
+        /// Image component is set in AttachImageComponent.
+        /// </summary>
+        private static void ConfigureSlicedSprites(PsdDocument doc)
+        {
+            int configured = 0;
+            foreach (var n in doc.root.SelfAndDescendants())
+            {
+                // Same fix as in AttachImageComponent: Unity JsonUtility
+                // constructs a default PsdSlice for any class-typed field
+                // missing from the JSON, so a null-check alone would
+                // "configure" every PNG as 9-slice.
+                if (n.slice == null) continue;
+                if ((n.slice.l | n.slice.t | n.slice.r | n.slice.b) == 0) continue;
+                if (!s_imagePathOverride.TryGetValue(n.id, out var dstRel)) continue;
+                if (ConfigureSlicedSprite(dstRel, n.slice))
+                    configured++;
+            }
+            if (configured > 0)
+            {
+                Debug.Log($"[PSDImporter] Configured 9-slice borders on {configured} sprite(s).");
+            }
+        }
+
+        /// <summary>
+        /// Set the spriteBorder on a single TextureImporter. Returns
+        /// true if the importer was actually modified and reimported.
+        /// </summary>
+        private static bool ConfigureSlicedSprite(string assetPath, PsdSlice slice)
+        {
+            if (string.IsNullOrEmpty(assetPath) || slice == null) return false;
+            var importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
+            if (importer == null)
+            {
+                Debug.LogWarning(
+                    $"[PSDImporter] No TextureImporter for '{assetPath}' — " +
+                    "could not set 9-slice border.");
+                return false;
+            }
+            // Unity's spriteBorder is Vector4(L, B, R, T) in pixels.
+            var border = new Vector4(slice.l, slice.b, slice.r, slice.t);
+            // Skip the reimport if nothing actually changed.
+            if (importer.textureType == TextureImporterType.Sprite
+                && importer.spriteImportMode == SpriteImportMode.Single
+                && importer.spriteBorder == border)
+            {
+                return false;
+            }
+            importer.textureType      = TextureImporterType.Sprite;
+            importer.spriteImportMode = SpriteImportMode.Single;
+            importer.spriteBorder     = border;
+            importer.SaveAndReimport();
+            return true;
         }
 
         /// <summary>
@@ -966,8 +1096,10 @@ namespace PSDImporter.Editor
             var result = new List<ImageConflictResolverWindow.ImageConflict>();
             if (doc == null) return result;
             var jsonDir = Path.GetDirectoryName(Path.GetFullPath(jsonPath)) ?? "";
-            var psdName = SanitizeClassName(
-                Path.GetFileNameWithoutExtension(doc.sourcePsd.name));
+            // Match the destination folder used by SetImagePathResolver
+            // — they have to agree, or the conflict list points at the
+            // wrong files.
+            var psdName = ResolveClassName(doc, GetActiveSettings());
             var rootRel = imageOutputRoot.Replace('\\', '/').TrimEnd('/');
             var rootAbs = Path.GetFullPath(
                 Path.Combine(Path.GetDirectoryName(Application.dataPath) ?? "", rootRel));
@@ -1000,6 +1132,13 @@ namespace PSDImporter.Editor
                     existingImagePath = dstAbs,
                     newSizeBytes      = (int)new FileInfo(srcPath).Length,
                     existingSizeBytes = (int)new FileInfo(dstAbs).Length,
+                    // Read pixel dimensions straight from the PNG header —
+                    // much cheaper than LoadImage() and good enough for the
+                    // "size changed" warning the user wants to see.
+                    newWidth          = PngDimensions(srcPath).w,
+                    newHeight         = PngDimensions(srcPath).h,
+                    existingWidth     = PngDimensions(dstAbs).w,
+                    existingHeight    = PngDimensions(dstAbs).h,
                     newHash           = ShortHash(newHash),
                     existingHash      = ShortHash(existingHash),
                 });
@@ -1185,6 +1324,40 @@ namespace PSDImporter.Editor
             {
                 var hash = sha.ComputeHash(fs);
                 return "sha256:" + BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+            }
+        }
+
+        /// <summary>
+        /// Read PNG width/height from the file header without decoding
+        /// the image. PNG layout: 8-byte magic, then IHDR chunk
+        /// (4 bytes length, 4 bytes "IHDR", 4 bytes width, 4 bytes
+        /// height — all big-endian). Returns (0, 0) for non-PNG or
+        /// truncated files; the caller can decide to fall back to
+        /// LoadImage.
+        /// </summary>
+        private static (int w, int h) PngDimensions(string path)
+        {
+            try
+            {
+                using (var fs = File.OpenRead(path))
+                {
+                    var buf = new byte[24];
+                    int read = fs.Read(buf, 0, 24);
+                    if (read < 24) return (0, 0);
+                    // Magic: 89 50 4E 47 0D 0A 1A 0A
+                    if (buf[0] != 0x89 || buf[1] != 0x50 || buf[2] != 0x4E || buf[3] != 0x47)
+                        return (0, 0);
+                    // IHDR chunk length (bytes 8..11) is irrelevant; the
+                    // type "IHDR" is bytes 12..15; width is bytes 16..19
+                    // and height is bytes 20..23, both big-endian.
+                    int w = (buf[16] << 24) | (buf[17] << 16) | (buf[18] << 8) | buf[19];
+                    int h = (buf[20] << 24) | (buf[21] << 16) | (buf[22] << 8) | buf[23];
+                    return (w, h);
+                }
+            }
+            catch
+            {
+                return (0, 0);
             }
         }
     }

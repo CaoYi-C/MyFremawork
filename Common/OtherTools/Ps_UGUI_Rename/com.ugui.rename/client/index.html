@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>UGUI 图层命名工具</title>
+  <!-- 引用 UI 样式表，你也可以直接在 <style> 标签里写样式 -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 引入 Adobe 官方的通信库 -->
+  <script src="jsx/CSInterface.js"></script>
+  
+  <div class="container">
+    <p class="info">选择图层后点击按钮，批量添加 Unity UGUI 前缀。</p>
+    <div class="panel">
+      <div class="panel-title">选项</div>
+      <label>
+        <input type="checkbox" id="cbReplace" checked> 替换已有 UGUI 前缀，例如 img_close → btn_close
+      </label>
+      <label>
+        <input type="checkbox" id="cbLower" checked> 名称转小写
+      </label>
+      <label>
+        <input type="checkbox" id="cbSpace" checked> 空格替换为下划线
+      </label>
+      <label>
+        <input type="checkbox" id="cbRecursive"> 如果选中的是图层组，递归处理组内图层
+      </label>
+    </div>
+    <div class="panel">
+      <div class="panel-title">常用前缀</div>
+      <!--
+        前缀清单与 UGUI 组件映射见项目根目录的
+        Tools/PSDExporter/PREFIXES.md（唯一来源）。
+        加/删按钮时三边要同步：这里 + host/UGUI_Rename.jsx + Python exporter。
+      -->
+      <div class="button-grid">
+        <button data-prefix="btn_">btn_ 按钮</button>
+        <button data-prefix="txt_">txt_ 文本</button>
+        <button data-prefix="img_">img_ 图片</button>
+        <button data-prefix="icon_">icon_ 图标</button>
+        <button data-prefix="bg_">bg_ 背景</button>
+        <button data-prefix="panel_">panel_ 面板</button>
+        <button data-prefix="scroll_">scroll_ 滚动</button>
+        <button data-prefix="input_">input_ 输入框</button>
+        <button data-prefix="toggle_">toggle_ 开关</button>
+        <button data-prefix="slider_">slider_ 滑动条</button>
+        <button data-prefix="progress_">progress_ 进度</button>
+        <button data-prefix="mask_">mask_ 遮罩</button>
+        <button data-prefix="group_">group_ 分组</button>
+        <button data-prefix="item_">item_ 条目</button>
+        <button data-prefix="fx_">fx_ 特效</button>
+        <button data-prefix="anim_">anim_ 动画</button>
+        <button data-prefix="root_">root_ 根节点</button>
+      </div>
+    </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">自定义前缀</div>
+      <div class="custom-row">
+        <input type="text" id="customPrefix" placeholder="例如: my_">
+        <button id="applyCustom">应用</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">九宫格 (9-slice)</div>
+      <p class="hint">为选中图层追加 <code>_9slice_L_T_R_B</code> 后缀（始终写出 4 个数字，不简写）。Python 端会解析并输出到 JSON，让 Unity 端给 Sprite 设置 spriteBorder、给 Image 设置 Type=Sliced。</p>
+      <div class="slice-grid">
+        <label>L (左)<input type="number" id="sliceL" value="10" min="0" step="1"></label>
+        <label>T (上)<input type="number" id="sliceT" value="10" min="0" step="1"></label>
+        <label>R (右)<input type="number" id="sliceR" value="10" min="0" step="1"></label>
+        <label>B (下)<input type="number" id="sliceB" value="10" min="0" step="1"></label>
+      </div>
+      <div class="slice-autoprefix">
+        <label>
+          <input type="checkbox" id="cbAutoPrefix" checked> 没有 UGUI 前缀时自动补
+        </label>
+        <select id="autoPrefixSel">
+          <option value="img_" selected>img_</option>
+          <option value="btn_">btn_</option>
+        </select>
+      </div>
+      <p class="hint" style="margin: 0 0 6px">Python 端只导出带 UGUI 前缀的图层（<code>marked_only</code> 模式）。直接给图层加 9-slice 后缀但没前缀会被静默丢弃 —— 这个开关会自动在名字前面拼上前缀。</p>
+      <div class="slice-buttons">
+        <button id="apply9Slice">应用 9-slice 标记</button>
+        <button id="remove9Slice" class="danger">移除 9-slice</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 引入你的主要逻辑代码 -->
+  <script src="index.js"></script>
+</body>
+</html>

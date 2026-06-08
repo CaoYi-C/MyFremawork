@@ -31,6 +31,10 @@ namespace PSDImporter.Editor
             public string existingImagePath;  // absolute
             public int    newSizeBytes;
             public int    existingSizeBytes;
+            public int    newWidth;           // PNG pixel dimensions
+            public int    newHeight;
+            public int    existingWidth;
+            public int    existingHeight;
             public string newHash;            // short sha256 prefix
             public string existingHash;
         }
@@ -75,7 +79,13 @@ namespace PSDImporter.Editor
             // Modal — this call returns only after the window is closed.
             win.ShowModalUtility();
 
-            return win._result ?? new Dictionary<string, bool>();
+            // Return null on cancel so the caller can ABORT the import.
+            // Previously this coalesced null to an empty dict, which made
+            // the cancel button silently fall through to the copy step —
+            // a very confusing "I clicked cancel but the import ran
+            // anyway" bug. Empty dict is reserved for the
+            // "Apply with all keeps" path.
+            return win._result;
         }
 
         private void OnDisable()
@@ -89,6 +99,18 @@ namespace PSDImporter.Editor
 
         private void OnGUI()
         {
+            // If the user already decided (Apply or Cancel), this window
+            // is on its way to being closed. OnGUI will be invoked one
+            // more time during the close cleanup pass — drawing UI on
+            // that frame can leave the IMGUI layout stack half-open
+            // (the "EndLayoutGroup: BeginLayoutGroup must be called
+            // first" crash). Just bail out cleanly.
+            if (_resultReady)
+            {
+                Close();
+                return;
+            }
+
             // ─── Header ────────────────────────────────────────────
             EditorGUILayout.LabelField(
                 $"{_conflicts.Count} 张图片与项目现有版本内容不同。",
@@ -131,25 +153,35 @@ namespace PSDImporter.Editor
             EditorGUILayout.Space(4);
 
             // ─── Footer: Cancel / Apply ────────────────────────────
+            //
+            // The button just stores the result and sets _resultReady.
+            // Do NOT call Close() here — that tears down the window
+            // mid-OnGUI, which leaves the IMGUI layout stack in a bad
+            // state and triggers the EndLayoutGroup crash.
+            //
+            // Instead, OnGUI's top-of-method guard at the start of this
+            // file checks _resultReady on the NEXT OnGUI invocation
+            // (which Unity always fires at least once after a button
+            // click, before the modal ShowModalUtility() loop unwinds)
+            // and calls Close() there. By that point the previous
+            // OnGUI frame has fully unwound, so the IMGUI state is
+            // clean and the close goes through without complaint.
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("取消导入", GUILayout.Width(120), GUILayout.Height(30)))
                 {
                     _result = null;
                     _resultReady = true;
-                    Close();
-                    return;
                 }
                 GUILayout.FlexibleSpace();
+                Color prevBg = GUI.backgroundColor;
                 GUI.backgroundColor = new Color(0.6f, 0.85f, 0.6f);
                 if (GUILayout.Button("应用", GUILayout.Width(120), GUILayout.Height(30)))
                 {
                     _result = new Dictionary<string, bool>(_overwrites);
                     _resultReady = true;
-                    Close();
-                    return;
                 }
-                GUI.backgroundColor = Color.white;
+                GUI.backgroundColor = prevBg;
             }
         }
 
@@ -165,9 +197,24 @@ namespace PSDImporter.Editor
                     $"id: {c.layerId}",
                     EditorStyles.miniLabel);
                 EditorGUILayout.LabelField(
-                    $"旧图: {FormatSize(c.existingSizeBytes)}  sha={c.existingHash}    ·    " +
-                    $"新图: {FormatSize(c.newSizeBytes)}  sha={c.newHash}",
+                    $"旧图: {FormatDims(c.existingWidth, c.existingHeight)}  " +
+                    $"{FormatSize(c.existingSizeBytes)}  sha={c.existingHash}    ·    " +
+                    $"新图: {FormatDims(c.newWidth, c.newHeight)}  " +
+                    $"{FormatSize(c.newSizeBytes)}  sha={c.newHash}",
                     EditorStyles.miniLabel);
+
+                // If the pixel dimensions differ, call it out — the user
+                // asked for this because resizing a layer in PS doesn't
+                // change the file hash if the cropped pixels happen to
+                // look the same, but the new sprite will be a different
+                // size and the prefab's sizeDelta will be re-written.
+                if (c.existingWidth != c.newWidth || c.existingHeight != c.newHeight)
+                {
+                    EditorGUILayout.HelpBox(
+                        $"⚠ 尺寸不同:旧 {c.existingWidth}×{c.existingHeight}  " +
+                        $"→  新 {c.newWidth}×{c.newHeight}",
+                        MessageType.Warning);
+                }
 
                 // Side-by-side previews. No tinted background — transparent
                 // PNGs need to show against the editor's neutral background
@@ -188,28 +235,35 @@ namespace PSDImporter.Editor
                         _newTexCache);
                 }
 
-                // Per-row keep/overwrite toggle (default: keep).
-                bool current = _overwrites[c.layerId];
+                // Per-row keep/overwrite — a true single-select pair of
+                // Toggles (the two are kept in sync so only one is on
+                // at a time). Replacing the previous button-based UI
+                // also fixed the EndLayoutGroup crash: the old
+                // conditional backgroundColor + two tall GUILayout.
+                // Buttons inside a HelpBox + HorizontalScope nesting
+                // would occasionally leave the IMGUI layout stack
+                // dirty when a button click mutated state mid-frame.
+                EditorGUILayout.Space(2);
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     GUILayout.FlexibleSpace();
-                    GUI.backgroundColor = current ? Color.white : new Color(0.6f, 0.85f, 0.6f);
-                    if (GUILayout.Button(
-                        current ? "  ✓  保留旧图" : "  保留旧图",
-                        GUILayout.Width(160), GUILayout.Height(26)))
-                    {
-                        if (current) _overwrites[c.layerId] = false;
-                    }
-                    GUI.backgroundColor = !current ? Color.white : new Color(0.95f, 0.65f, 0.55f);
-                    if (GUILayout.Button(
-                        !current ? "  用新图覆盖  ⚠" : "  用新图覆盖",
-                        GUILayout.Width(160), GUILayout.Height(26)))
-                    {
-                        if (!current) _overwrites[c.layerId] = true;
-                    }
-                    GUI.backgroundColor = Color.white;
+                    bool currentOverwrite = _overwrites[c.layerId];
+                    bool newKeep = EditorGUILayout.ToggleLeft(
+                        "保留旧图", !currentOverwrite, GUILayout.Width(100));
+                    bool newOverwrite = EditorGUILayout.ToggleLeft(
+                        "用新图覆盖 ⚠", currentOverwrite, GUILayout.Width(140));
+                    // Keep and Overwrite are mutually exclusive. If the
+                    // user clicks one, force the other off.
+                    if (newKeep && currentOverwrite)      _overwrites[c.layerId] = false;
+                    else if (newOverwrite && !currentOverwrite) _overwrites[c.layerId] = true;
                 }
             }
+        }
+
+        private static string FormatDims(int w, int h)
+        {
+            if (w <= 0 || h <= 0) return "尺寸未知";
+            return $"{w}×{h}px";
         }
 
         private void DrawPreviewPane(

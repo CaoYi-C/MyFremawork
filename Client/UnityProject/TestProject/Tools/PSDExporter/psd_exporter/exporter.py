@@ -20,6 +20,7 @@ import io
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -211,6 +212,75 @@ def _pascalize(s: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────
+#  Filename + 9-slice parsing
+#
+#  The exported PNG filename is the LAYER NAME WITH THE PREFIX AND
+#  9-slice SUFFIX STRIPPED:
+#    btn_close                         → close.png
+#    icon_settings                     → settings.png
+#    btn_use_9slice_10_20_10_20        → use.png     (with slice {l:10,t:20,r:10,b:20})
+#    toggle_music_9slice               → music.png   (default 10/10/10/10)
+#
+#  This keeps filenames short and meaningful. Collisions (two layers
+#  with the same stripped name) follow the existing "last writer wins"
+#  policy — the C# side detects via hash and prompts the user.
+# ─────────────────────────────────────────────────────────────────────
+
+_SLICE_RE_FULL = re.compile(
+    r'^(.*)_9slice_(-?\d+)_(-?\d+)_(-?\d+)_(-?\d+)$')
+_SLICE_RE_DEFAULT = re.compile(r'^(.*)_9slice$')
+
+
+def parse_layer_name_for_image(name: str) -> tuple[str, str, dict | None]:
+    """
+    Split a layer name into (logical_png_name, original_name, slice_meta).
+
+    The logical name is what we use for the PNG filename — the UGUI
+    prefix (e.g. 'btn_') and any 9-slice suffix are stripped. The
+    original name is preserved unchanged in the JSON's `name` field so
+    the C# prefab hierarchy keeps the designer's layer names.
+
+    Returns slice_meta as {l, t, r, b} in pixels, or None if no
+    9-slice metadata is present.
+
+    Examples:
+      btn_close                        → ('close',    'btn_close',                        None)
+      btn_use_9slice_10_20_10_20       → ('use',      'btn_use_9slice_10_20_10_20',       {l:10,t:20,r:10,b:20})
+      toggle_music_9slice              → ('music',    'toggle_music_9slice',              {l:10,t:10,r:10,b:10})
+      关闭                              → ('关闭',      '关闭',                              None)
+    """
+    original = name
+    slice_meta: dict | None = None
+
+    m = _SLICE_RE_FULL.match(name)
+    if m:
+        name = m.group(1)
+        slice_meta = {
+            "l": int(m.group(2)),
+            "t": int(m.group(3)),
+            "r": int(m.group(4)),
+            "b": int(m.group(5)),
+        }
+    elif _SLICE_RE_DEFAULT.match(name):
+        name = name[: -len("_9slice")]
+        # Default 9-slice borders — common middle-of-the-road value
+        # that works for typical button / panel art.
+        slice_meta = {"l": 10, "t": 10, "r": 10, "b": 10}
+
+    # Strip the UGUI prefix to get the logical PNG name. We do NOT
+    # strip the prefix from `original` — the JSON's name field keeps
+    # it for the C# prefab hierarchy.
+    lower = name.lower()
+    logical = name
+    for p in ALL_PREFIXES:
+        if lower.startswith(p):
+            logical = name[len(p):]
+            break
+
+    return logical, original, slice_meta
+
+
+# ─────────────────────────────────────────────────────────────────────
 #  Export data classes (also used to build the JSON dict)
 # ─────────────────────────────────────────────────────────────────────
 
@@ -230,6 +300,12 @@ class ExportNode:
     image_hash: str | None = None
     image_file: str | None = None
     image_transparent: bool = False
+
+    # 9-slice (Sliced sprite) borders in pixels. None ⇒ not sliced.
+    # Schema: { l, t, r, b } — the same layout Unity's TextureImporter
+    # `spriteBorder` Vector4(L, B, R, T) uses, except we keep top-first
+    # here for readability.
+    slice: dict | None = None
 
     # text-only
     text_hash: str | None = None
@@ -261,6 +337,8 @@ class ExportNode:
             d["imageHash"] = self.image_hash
             d["imageFile"] = self.image_file
             d["imageTransparent"] = self.image_transparent
+            if self.slice is not None:
+                d["slice"] = self.slice
         if self.is_composite:
             d["isComposite"] = True
         return d
@@ -357,10 +435,11 @@ class PsdExporter:
             pivot={"x": 0.0, "y": 0.0},
             children=[
                 n for n in (
-                    self._walk_layer(child, parent_id="root", ctx=ctx,
-                                     marked_only=self.marked_only)
+                    self._walk_layer(
+                        child, parent_id="root", ctx=ctx,
+                        marked_only=self.marked_only,
+                        parent_visible=True)
                     for child in psd
-                    if _is_visible_layer(child)
                 )
                 if n is not None
             ],
@@ -405,6 +484,7 @@ class PsdExporter:
     def _walk_layer(
         self, layer, parent_id: str, ctx: "_WalkContext",
         marked_only: bool = False,
+        parent_visible: bool = True,
     ) -> "ExportNode | None":
         """
         Walk one PSD layer into an ExportNode.
@@ -420,10 +500,30 @@ class PsdExporter:
           - Keep a group if any of its descendants is marked (so we
             preserve the hierarchy down to the marked leaves).
           - Drop everything else.
+
+        Visibility rules (Photoshop "eye" toggle):
+          - A layer is considered hidden if EITHER its own .visible flag
+            is False OR any ancestor group's .visible is False. The
+            psd-tools `layer.visible` attribute is per-layer, so we have
+            to propagate parent visibility ourselves.
+          - Use case: a designer hides a whole UI panel by clicking the
+            "eye" on its parent group. They expect the whole subtree to
+            be dropped from the export (it's how a single PSD can hold
+            several alternative layouts and the user picks which to
+            ship by toggling visibility).
         """
+        # Visibility gate: if either this layer or any ancestor is
+        # hidden, drop the whole subtree. We check this BEFORE doing any
+        # further work — no need to classify / composite / hash images
+        # we're going to throw away.
+        self_visible = bool(getattr(layer, "visible", True))
+        effective_visible = parent_visible and self_visible
+        if not effective_visible:
+            return None
+
         node_id = f"{parent_id}/{layer.name}"
         kind = classify_layer_name(layer.name)
-        visible = bool(layer.visible)
+        visible = self_visible
         opacity = float(getattr(layer, "opacity", 1.0) or 1.0) / 255.0
 
         bbox = layer.bbox  # (x0, y0, x1, y1) in PSD coords
@@ -441,10 +541,14 @@ class PsdExporter:
 
         if layer_kind == "group":
             # Recurse into children first so we know which to keep.
+            # We no longer pre-filter with _is_visible_layer — the
+            # parent_visible argument now handles inheritance.
             raw_children = [
-                self._walk_layer(child, node_id, ctx, marked_only=marked_only)
+                self._walk_layer(
+                    child, node_id, ctx,
+                    marked_only=marked_only,
+                    parent_visible=parent_visible and self_visible)
                 for child in layer
-                if _is_visible_layer(child)
             ]
             kept_children = [c for c in raw_children if c is not None]
 
@@ -546,13 +650,23 @@ class PsdExporter:
     def _build_image_node(
         self, layer, node_id, kind, visible, opacity, rect, pivot, pil, ctx,
     ) -> ExportNode:
+        # Parse the layer name once: extract 9-slice metadata (if any)
+        # and the logical PNG name (prefix + slice suffix stripped). The
+        # original layer name is kept in the JSON's `name` field so the
+        # C# prefab hierarchy preserves the designer's naming.
+        logical_name, original_name, slice_meta = parse_layer_name_for_image(
+            layer.name)
+
         png_bytes = self._encode_png(pil)
         img_hash = sha256_bytes(png_bytes)
-        img_file = ctx.write_image(node_id, png_bytes, img_hash)
+        img_file = ctx.write_image(logical_name, png_bytes, img_hash)
         is_composite = kind in COMPOSITE_PREFIXES.values()
         node = ExportNode(
             id=node_id,
-            name=layer.name,
+            # Preserve the FULL layer name (including prefix and any
+            # 9-slice suffix) so the C# side's GameObject names match
+            # what the designer sees in Photoshop.
+            name=original_name,
             type=kind,
             visible=visible,
             opacity=opacity,
@@ -561,6 +675,7 @@ class PsdExporter:
             image_hash=img_hash,
             image_file=str(Path(self.image_subdir) / img_file.name),
             image_transparent=_has_alpha(pil),
+            slice=slice_meta,
             is_composite=is_composite,
         )
         if is_composite:
@@ -568,35 +683,12 @@ class PsdExporter:
                 f"Composite '{node_id}': tool only creates the Image. "
                 f"Manually add the {kind.title()} component in Unity Inspector."
             )
-        ctx.record(node)
-        return node
-
-        png_bytes = self._encode_png(pil)
-        img_hash = sha256_bytes(png_bytes)
-        img_file = ctx.write_image(node_id, png_bytes, img_hash)
-
-        # The kind name we set on the node uses the FULL classification
-        # (button / input / scroll / etc.), not just "image" — this is
-        # what the C# side branches on to decide which UGUI component to
-        # attach.
-        is_composite = kind in COMPOSITE_PREFIXES.values()
-        node = ExportNode(
-            id=node_id,
-            name=layer.name,
-            type=kind,
-            visible=visible,
-            opacity=opacity,
-            rect=rect,
-            pivot=pivot,
-            image_hash=img_hash,
-            image_file=str(Path(self.image_subdir) / img_file.name),
-            image_transparent=_has_alpha(pil),
-            is_composite=is_composite,
-        )
-        if is_composite:
-            ctx.warn(
-                f"Composite '{node_id}': tool only creates the Image. "
-                f"Manually add the {kind.title()} component in Unity Inspector."
+        if slice_meta is not None:
+            LOG.info(
+                "9-slice '%s' → %s.png (borders L=%d T=%d R=%d B=%d)",
+                node_id, logical_name,
+                slice_meta["l"], slice_meta["t"],
+                slice_meta["r"], slice_meta["b"],
             )
         ctx.record(node)
         return node
@@ -711,18 +803,18 @@ class _WalkContext:
         self.warnings.append(msg)
         LOG.warning(msg)
 
-    def write_image(self, node_id: str, png_bytes: bytes, img_hash: str) -> Path:
+    def write_image(self, logical_name: str, png_bytes: bytes, img_hash: str) -> Path:
         """
         Write a PNG to disk, but only if the same content doesn't already
-        exist on disk with the same hash. The filename is just the layer
-        name (the part of `node_id` after the last '/'), so:
-          - 同一 PSD 内不同 group 的同名图层会覆盖 — Unity 端会检测 hash
-            并提示用户处理冲突
-          - 不同重跑同一 PSD 时,文件名稳定,Unity 端按 hash 判断是否真要重写
+        exist on disk with the same hash. The filename is the LOGICAL
+        name (UGUI prefix + 9-slice suffix already stripped) so e.g.
+        `btn_use_9slice_10_20_10_20` ends up as `use.png`, not
+        `btn_use_9slice_10_20_10_20.png`. If two layers in the same
+        PSD produce the same logical name, the second overwrites the
+        first on disk; the C# side detects the hash mismatch and
+        prompts the user.
         """
-        # node_id looks like "root/使用1/组 126/btn_use" — we want just "btn_use"
-        layer_name = node_id.rsplit("/", 1)[-1]
-        safe = _safe_filename(layer_name)
+        safe = _safe_filename(logical_name)
         target = self.image_root / f"{safe}.png"
         if target.exists():
             # Re-export only if content actually changed.
@@ -738,9 +830,17 @@ class _WalkContext:
 
 def _is_visible_layer(layer) -> bool:
     """
-    Skip layers that are explicitly hidden. We still need to recurse into
-    hidden groups? No — if a group is hidden, its children are hidden too.
-    The PSD spec says a hidden group is treated as invisible.
+    Per-layer visibility check ONLY. Does NOT consider parent groups.
+
+    Historically used to skip hidden children, but that approach misses
+    the common case where a parent GROUP is hidden — its children still
+    report `.visible = True` in psd-tools, but Photoshop's renderer
+    treats them as invisible.
+
+    The proper way to handle this is to thread `parent_visible` down the
+    walk (see `_walk_layer`); callers should no longer pre-filter with
+    this helper. Kept for any external test mocks that might still
+    import it.
     """
     return bool(getattr(layer, "visible", True))
 

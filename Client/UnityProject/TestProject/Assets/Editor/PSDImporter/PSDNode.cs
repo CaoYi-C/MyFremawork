@@ -65,6 +65,11 @@ namespace PSDImporter.Editor
         public string imageFile;
         public bool   imageTransparent;
 
+        // 9-slice border. Only set when the layer's PSD name had a
+        // `_9slice_L_T_R_B` suffix. Used by the importer to set the
+        // Sprite's `spriteBorder` and the Image's `type=Sliced`.
+        public PsdSlice slice;
+
         // text
         public string   textHash;
         public PsdText  text;
@@ -133,6 +138,22 @@ namespace PSDImporter.Editor
         public string alignment;   // UGUI TextAnchor
         public bool   bold;
         public bool   italic;
+    }
+
+    /// <summary>
+    /// 9-slice (Sliced sprite) border values in PIXELS, parsed from the
+    /// Python exporter. Set on image-bearing layers whose PSD name ends
+    /// with `_9slice_L_T_R_B` (or just `_9slice` for 10/10/10/10).
+    /// The C# importer sets the Sprite's border on the TextureImporter
+    /// and the Image component's `type` to Sliced.
+    /// </summary>
+    [Serializable]
+    public class PsdSlice
+    {
+        public int l;  // left   border, pixels from left edge
+        public int t;  // top    border, pixels from top edge
+        public int r;  // right  border, pixels from right edge
+        public int b;  // bottom border, pixels from bottom edge
     }
 
     // ─────────────────────────────────────────────────────────────────

@@ -1,0 +1,224 @@
+body {
+  margin: 0;
+  padding: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  background: #2b2b2b;
+  color: #e0e0e0;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.info {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: #999;
+  line-height: 1.4;
+}
+
+.panel {
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  padding: 8px 10px;
+  background: #1f1f1f;
+}
+
+.panel-title {
+  font-weight: bold;
+  margin-bottom: 6px;
+  color: #b0b0b0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+label {
+  display: block;
+  margin: 4px 0;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+label input {
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.button-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+button {
+  padding: 6px 8px;
+  background: #0d6396;
+  color: #fff;
+  border: 1px solid #0a4d75;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  transition: background 0.1s;
+}
+
+button:hover {
+  background: #0e7ab8;
+}
+
+button:active {
+  background: #0a4d75;
+}
+
+button:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(14, 122, 184, 0.4);
+}
+
+.custom-row {
+  display: flex;
+  gap: 6px;
+}
+
+.custom-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 6px;
+  background: #1a1a1a;
+  color: #e0e0e0;
+  border: 1px solid #3a3a3a;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.custom-row input:focus {
+  outline: none;
+  border-color: #0e7ab8;
+}
+
+.custom-row button {
+  flex: 0 0 auto;
+  padding: 5px 14px;
+}
+
+.hint {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: #999;
+  line-height: 1.4;
+}
+
+.hint code {
+  background: #2a2a2a;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-size: 10px;
+  color: #e0e0e0;
+}
+
+.slice-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+  margin-bottom: 8px;
+}
+
+.slice-grid label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+  padding: 4px 6px;
+  background: #1a1a1a;
+  border: 1px solid #3a3a3a;
+  border-radius: 3px;
+  font-size: 11px;
+  color: #b0b0b0;
+  cursor: default;
+}
+
+.slice-grid input {
+  width: 60px;
+  padding: 3px 5px;
+  background: #2b2b2b;
+  color: #e0e0e0;
+  border: 1px solid #3a3a3a;
+  border-radius: 2px;
+  font-size: 11px;
+  font-family: inherit;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+
+.slice-grid input::-webkit-outer-spin-button,
+.slice-grid input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.slice-grid input:focus {
+  outline: none;
+  border-color: #0e7ab8;
+}
+
+.slice-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.slice-buttons button {
+  flex: 1;
+  padding: 6px 8px;
+}
+
+.slice-autoprefix {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.slice-autoprefix label {
+  flex: 1;
+  margin: 0;
+  font-size: 11px;
+  color: #b0b0b0;
+  cursor: pointer;
+}
+
+.slice-autoprefix select {
+  flex: 0 0 auto;
+  width: 70px;
+  padding: 3px 6px;
+  background: #1a1a1a;
+  color: #e0e0e0;
+  border: 1px solid #3a3a3a;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.slice-autoprefix select:focus {
+  outline: none;
+  border-color: #0e7ab8;
+}
+
+button.danger {
+  background: #8a3a3a;
+  border-color: #6a2a2a;
+}
+
+button.danger:hover {
+  background: #a84848;
+}
+
+button.danger:active {
+  background: #6a2a2a;
+}

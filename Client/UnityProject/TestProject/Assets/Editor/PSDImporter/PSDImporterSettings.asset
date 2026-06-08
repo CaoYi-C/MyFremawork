@@ -16,6 +16,7 @@ MonoBehaviour:
   pythonExecutable: python
   pythonScriptPath: 
   prefabOutputRoot: Assets/PSDImport
+  prefabNameOverride: UIBagMainWindow
   imageOutputRoot: Assets/PSDImages
   autoSetSpriteImporter: 1
   deleteSourceImagesAfterImport: 1

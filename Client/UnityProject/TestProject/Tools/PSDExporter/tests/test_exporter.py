@@ -358,9 +358,122 @@ def test_exporter_end_to_end() -> None:
         exp_mod.PSDImage.open = original_open
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-#  Runner
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+def test_exporter_respects_visibility() -> None:
+    """
+    A layer (or an entire ancestor group) with visible=False should be
+    dropped from the export, along with its whole subtree.
+
+    Use case: a designer wants ONE PSD file to hold several alternative
+    UIs (e.g. Login / Register / ForgotPassword panels all on the same
+    canvas). They click the "eye" off on the ones they don't want, and
+    only the visible one ends up in Unity.
+
+    psd-tools reports `visible` per layer — it does NOT propagate the
+    parent group's hidden state to its children. So we have to thread
+    `parent_visible` down the walk in Python.
+
+    Tree under test:
+      Root
+        ├─ Panel_Login           (group, visible=True)
+        │   ├─ btn_login         (image, visible=True)
+        │   └─ btn_cancel        (image, visible=False  ← should drop)
+        ├─ Panel_Register        (group, visible=False  ← should drop whole subtree)
+        │   ├─ btn_register      (image)
+        │   └─ btn_verify        (image)
+        └─ loose_decoration      (image, no UGUI prefix → group drop)
+
+    Expected: only the `btn_login` PNG and the `Panel_Login` group are
+    exported. `btn_register` and `btn_verify` are dropped because their
+    parent is hidden. `btn_cancel` is dropped because of its own
+    `.visible=False`.
+    """
+    from psd_exporter.exporter import _WalkContext  # noqa: E402
+
+    tree = _MockLayer(
+        "Root",
+        kind="group",
+        bbox=(0, 0, 1920, 1080),
+        children=[
+            _MockLayer(
+                "Panel_Login", kind="group", visible=True,
+                bbox=(0, 0, 800, 600),
+                children=[
+                    _MockLayer("btn_login", kind="pixel", bbox=(0, 0, 200, 80),
+                               pil=_make_pil(4, 4, (255, 0, 0, 255))),
+                    _MockLayer("btn_cancel", kind="pixel", visible=False,
+                               bbox=(0, 0, 200, 80),
+                               pil=_make_pil(4, 4, (0, 255, 0, 255))),
+                ],
+            ),
+            _MockLayer(
+                "Panel_Register", kind="group", visible=False,
+                bbox=(0, 0, 800, 600),
+                children=[
+                    _MockLayer("btn_register", kind="pixel", bbox=(0, 0, 200, 80),
+                               pil=_make_pil(4, 4, (0, 0, 255, 255))),
+                    _MockLayer("btn_verify", kind="pixel", bbox=(0, 0, 200, 80),
+                               pil=_make_pil(4, 4, (255, 255, 0, 255))),
+                ],
+            ),
+            # An unmarked top-level pixel (no UGUI prefix) — should be
+            # dropped by marked_only, not by visibility.
+            _MockLayer("loose_decoration", kind="pixel",
+                       pil=_make_pil(4, 4, (128, 128, 128, 255))),
+        ],
+    )
+
+    from psd_exporter import exporter as exp_mod
+    original = exp_mod._composite_layer
+
+    def _fake_convert(layer):
+        if getattr(layer, "_pil", None) is not None:
+            return layer._pil
+        raise RuntimeError(f"unexpected convert on {layer.name}")
+
+    exp_mod._composite_layer = _fake_convert
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            img_root = Path(tmp) / "images"
+            img_root.mkdir()
+            ctx = _WalkContext(image_root=img_root, image_subdir="images")
+            exporter = PsdExporter(tmp)
+            walked = exporter._walk_layer(
+                tree, "root", ctx, marked_only=True, parent_visible=True)
+
+            assert walked is not None and walked.type == "group"
+            # Should keep ONLY Panel_Login (Panel_Register was hidden,
+            # loose_decoration has no UGUI prefix).
+            assert len(walked.children) == 1, (
+                f"expected 1 top-level group, got {len(walked.children)}: "
+                f"{[c.name for c in walked.children]}"
+            )
+            login = walked.children[0]
+            assert login.name == "Panel_Login", login.name
+            # Panel_Login should have 1 child (btn_login). btn_cancel was
+            # directly hidden.
+            assert len(login.children) == 1, (
+                f"expected 1 child in Panel_Login, got {len(login.children)}: "
+                f"{[c.name for c in login.children]}"
+            )
+            assert login.children[0].name == "btn_login"
+
+            # And the hidden subtree's PNGs were never written.
+            assert (img_root / "login.png").exists()
+            assert not (img_root / "register.png").exists()
+            assert not (img_root / "verify.png").exists()
+            assert not (img_root / "cancel.png").exists()
+
+            # No hashes for the dropped layers — incremental diff sees
+            # them as "removed" if they were previously exported.
+            for hidden in ("btn_register", "btn_verify", "btn_cancel"):
+                assert hidden not in ctx.node_hashes, (
+                    f"{hidden} was hidden but ended up in node_hashes"
+                )
+
+            print("  ✓ hidden parent groups and hidden layers are dropped from export")
+    finally:
+        exp_mod._composite_layer = original
+
 
 def run_all() -> int:
     print("[unit] hashing & helpers")
@@ -372,6 +485,7 @@ def run_all() -> int:
     print("[e2e ] exporter")
     test_exporter_export_path()
     test_exporter_end_to_end()
+    test_exporter_respects_visibility()
     print("\nAll tests passed.")
     return 0
 
