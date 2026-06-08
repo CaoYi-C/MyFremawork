@@ -53,16 +53,29 @@ namespace PSDImporter.Editor
 
         /// <summary>
         /// Run the import. Safe to call from a menu item or batch script.
+        /// Per-PSD prefab-name override must be passed explicitly via
+        /// the four-arg Import(...) overload.
         /// </summary>
         public static ImportReport Import(string jsonPath, PSDImporterSettings settings)
-            => Import(jsonPath, settings, settings != null && settings.autoGenerateUIBind);
+            => Import(jsonPath, settings, settings != null && settings.autoGenerateUIBind, null);
 
         /// <summary>
-        /// Run the import, with an explicit override for UIBind code generation.
-        /// Use this when you want to control the UIBind toggle from the caller
-        /// (e.g. the Editor window has a checkbox the user can flip per-import).
+        /// Backwards-compatible three-arg overload: no per-PSD override
+        /// supplied, falls through to the PSD file name.
         /// </summary>
         public static ImportReport Import(string jsonPath, PSDImporterSettings settings, bool generateUIBind)
+            => Import(jsonPath, settings, generateUIBind, null);
+
+        /// <summary>
+        /// Run the import, with explicit overrides for UIBind code
+        /// generation AND the prefab name. Use this when the caller
+        /// (e.g. the Editor window) collects per-import inputs from the
+        /// user — a UIBind checkbox, and a prefab-name override field
+        /// on each PSD row.
+        /// </summary>
+        public static ImportReport Import(
+            string jsonPath, PSDImporterSettings settings,
+            bool generateUIBind, string prefabNameOverride)
         {
             if (settings == null) throw new ArgumentNullException(nameof(settings));
             if (!File.Exists(jsonPath))
@@ -87,23 +100,69 @@ namespace PSDImporter.Editor
             var prevCache = IncrementalTracker.LoadOrCreate(cachePath);
             var diff = IncrementalTracker.Diff(doc, prevCache);
 
-            // The "fullyUnchanged" path is fast but it can be wrong: the
-            // user may have manually deleted the generated prefab between
-            // imports. The cache + JSON haven't changed, so the diff
-            // says "skip" — but the user clearly wants the prefab back.
-            // In that case force a rebuild.
-            if (diff.fullyUnchanged
-                && !string.IsNullOrEmpty(prevCache.lastImportedPrefabPath)
+            // The "fullyUnchanged" path is fast but it can be wrong in
+            // two ways. Force a rebuild when:
+            //   (a) the user manually deleted the generated prefab
+            //       between imports — cache + JSON are unchanged so the
+            //       diff says "skip" but the user clearly wants the
+            //       prefab back; OR
+            //   (b) the per-PSD prefab-name override changed since
+            //       last import — the JSON/PSD hash hasn't moved
+            //       (diff.fullyUnchanged is true), but the new name
+            //       points at a different prefab path that has never
+            //       been written. The old prefab at the old path is
+            //       left alone; the new path is created fresh.
+            // In both cases the existing lastImportedPrefabPath is now
+            // stale — we still want to compare against it for the
+            // "file missing" check.
+            var stalePathMissing = !string.IsNullOrEmpty(prevCache.lastImportedPrefabPath)
                 && !File.Exists(Path.GetFullPath(
                     Path.Combine(
                         Path.GetDirectoryName(Application.dataPath) ?? "",
-                        prevCache.lastImportedPrefabPath))))
+                        prevCache.lastImportedPrefabPath)));
+            if (diff.fullyUnchanged && stalePathMissing)
             {
                 Debug.Log(
                     $"[PSDImporter] '{doc.sourcePsd.name}' content unchanged, " +
                     $"but '{prevCache.lastImportedPrefabPath}' is missing " +
                     "on disk — forcing a rebuild.");
                 diff.fullyUnchanged = false;
+            }
+
+            // Derive class name early — the override-change detection
+            // below needs it, and the rest of the import (prefab path,
+            // NodeProvider / Window class names, UIBindData asset,
+            // image subfolder) all use the same value. The per-PSD
+            // override (set on each row of the importer window) wins,
+            // so two PSDs in one batch can land as different prefab
+            // names. When no override is supplied, the PSD file name
+            // is used.
+            var className = ResolveClassName(doc, settings, prefabNameOverride);
+            report.providerClassName = className + "NodeProvider";
+            report.windowClassName   = className + "Window";
+
+            // Per-PSD prefab-name override change. The cache's
+            // lastImportedPrefabPath encodes its OWN class name as
+            // <root>/<oldName>/<oldName>.prefab — extracting <oldName>
+            // from that path lets us detect a name change cheaply
+            // (avoids re-running SanitizeClassName on the path).
+            if (diff.fullyUnchanged
+                && !string.IsNullOrEmpty(prefabNameOverride)
+                && !string.IsNullOrEmpty(prevCache.lastImportedPrefabPath))
+            {
+                var oldName = ExtractClassNameFromPrefabPath(
+                    prevCache.lastImportedPrefabPath);
+                if (!string.IsNullOrEmpty(oldName)
+                    && oldName != className)
+                {
+                    Debug.Log(
+                        $"[PSDImporter] '{doc.sourcePsd.name}' content unchanged, " +
+                        $"but per-PSD prefab-name override changed " +
+                        $"'{oldName}' → '{className}' — forcing a rebuild " +
+                        $"so the new prefab is written to " +
+                        $"<prefabOutputRoot>/{className}/{className}.prefab.");
+                    diff.fullyUnchanged = false;
+                }
             }
 
             if (diff.fullyUnchanged)
@@ -120,15 +179,6 @@ namespace PSDImporter.Editor
             report.contentChangedCount  = diff.ContentChangedCount;
             report.sourceChanged        = diff.sourceChanged;
 
-            // Derive class name. If the user set a prefabNameOverride on
-            // the Settings asset, that wins (drives prefab filename,
-            // subfolder, root GameObject, NodeProvider + Window class
-            // names, and UIBindData asset name — all five stay in
-            // lockstep). Otherwise fall back to the PSD file name.
-            var className = ResolveClassName(doc, settings);
-            report.providerClassName = className + "NodeProvider";
-            report.windowClassName   = className + "Window";
-
             // Pre-compute variable names + binding metadata on every node.
             AssignVariableNames(doc.root);
 
@@ -141,8 +191,11 @@ namespace PSDImporter.Editor
             // Pre-scan for image conflicts and (if any) let the user
             // decide per-image whether to overwrite the existing PNG.
             // The resolver returns null only if the user clicked Cancel,
-            // which aborts the entire import.
-            var conflicts = PreScanImageConflicts(doc, jsonPath, imageOutputRoot);
+            // which aborts the entire import. The same className is
+            // threaded through so the resolver looks at the right
+            // subfolder.
+            var conflicts = PreScanImageConflicts(
+                doc, jsonPath, imageOutputRoot, className);
             Dictionary<string, bool> imageResolutions = null;
             if (conflicts.Count > 0)
             {
@@ -159,9 +212,11 @@ namespace PSDImporter.Editor
             // id→asset-path map used by the image attachment step.
             // Honors the user's per-image resolutions from the
             // conflict resolver; if there were no conflicts, every
-            // non-conflicting image is copied normally.
+            // non-conflicting image is copied normally. The className
+            // is threaded through so the image goes to the right
+            // subfolder (same name as the prefab + UIBind classes).
             var imageStats = SetImagePathResolver(
-                doc, jsonPath, imageOutputRoot, imageResolutions);
+                doc, jsonPath, imageOutputRoot, imageResolutions, className);
             report.imagesCopied              = imageStats.copied;
             report.imagesOverwritten         = imageStats.overwritten;
             report.imagesSkippedSameContent  = imageStats.skippedSameContent;
@@ -844,7 +899,12 @@ namespace PSDImporter.Editor
             return AssetDatabase.LoadAssetAtPath<UIBindData>(path);
         }
 
-        private static string SanitizeClassName(string s)
+        // Public so the importer window can compute the predicted
+        // prefab name for display ("→ 将生成: Assets/.../LoginView/..."),
+        // matching exactly what the import path will produce. Window
+        // doesn't write prefabs — it just shows the user what to
+        // expect before they click Import.
+        public static string SanitizeClassName(string s)
         {
             if (string.IsNullOrEmpty(s)) return "PSDView";
             var sb = new System.Text.StringBuilder();
@@ -854,6 +914,38 @@ namespace PSDImporter.Editor
             if (result.Length == 0) result = "PSDView";
             if (char.IsDigit(result[0])) result = "_" + result;
             return result;
+        }
+
+        // Pull the <className> out of a stored prefab path
+        // "<prefabOutputRoot>/<className>/<className>.prefab". Used
+        // by the importer itself to detect a per-PSD prefab-name
+        // override change without re-running SanitizeClassName
+        // (which would mask differences — "My View" and "MyView"
+        // sanitize to the same string). Also used by the Window to
+        // pre-fill the per-PSD override input from the last import's
+        // prefab path — making it public lets the Window reuse the
+        // exact same parser, so the two views can never disagree on
+        // what the "current class name" is. The parent folder name
+        // is what we trust, because the importer always writes
+        // <name>/<name>.prefab.
+        public static string ExtractClassNameFromPrefabPath(string prefabPath)
+        {
+            if (string.IsNullOrEmpty(prefabPath)) return "";
+            // Normalize separators so this works whether the cache
+            // was written on Windows or macOS.
+            var norm = prefabPath.Replace('\\', '/');
+            var file = Path.GetFileNameWithoutExtension(norm);
+            if (string.IsNullOrEmpty(file)) return "";
+            var dir = Path.GetDirectoryName(norm);
+            if (string.IsNullOrEmpty(dir)) return "";
+            var parent = Path.GetFileName(dir);
+            if (string.IsNullOrEmpty(parent)) return "";
+            // Convention is <name>/<name>.prefab — if the filename
+            // doesn't match the parent folder, the path was written
+            // by an older tool version or hand-edited; fall back to
+            // the parent (subfolder name) since that's what the new
+            // build will use anyway.
+            return file == parent ? file : parent;
         }
 
         /// <summary>
@@ -866,16 +958,19 @@ namespace PSDImporter.Editor
         /// found, etc.).
         ///
         /// Resolution order:
-        ///   1. <c>settings.prefabNameOverride</c> — if non-empty, this
-        ///      is what we use, after SanitizeClassName.
+        ///   1. <c>prefabNameOverride</c> argument — supplied per-call
+        ///      from the importer window (each PSD row carries its own
+        ///      override, so two PSDs in one batch can land as
+        ///      different prefab names).
         ///   2. Otherwise the PSD file name (without extension).
         /// </summary>
-        private static string ResolveClassName(PsdDocument doc, PSDImporterSettings settings)
+        private static string ResolveClassName(
+            PsdDocument doc, PSDImporterSettings settings,
+            string prefabNameOverride = null)
         {
-            var overrideName = settings != null ? settings.prefabNameOverride : null;
-            if (!string.IsNullOrWhiteSpace(overrideName))
+            if (!string.IsNullOrWhiteSpace(prefabNameOverride))
             {
-                return SanitizeClassName(overrideName.Trim());
+                return SanitizeClassName(prefabNameOverride.Trim());
             }
             return SanitizeClassName(Path.GetFileNameWithoutExtension(doc.sourcePsd.name));
         }
@@ -914,15 +1009,20 @@ namespace PSDImporter.Editor
         /// </summary>
         public static ImageCopyStats SetImagePathResolver(
             PsdDocument doc, string jsonPath, string imageOutputRoot,
-            Dictionary<string, bool> manualResolutions = null)
+            Dictionary<string, bool> manualResolutions = null,
+            string className = null)
         {
             var stats = new ImageCopyStats();
             s_imagePathOverride = new Dictionary<string, string>();
             var jsonDir = Path.GetDirectoryName(Path.GetFullPath(jsonPath)) ?? "";
             // Use the same name the importer will use for the prefab
-            // subfolder + class name. Otherwise images and the prefab
-            // would land in different folders and nothing would link.
-            var psdName = ResolveClassName(doc, GetActiveSettings());
+            // subfolder + class name. Callers should pass the already-
+            // resolved className; the fallback re-resolves from
+            // settings so batch callers that go straight to this
+            // helper (e.g. legacy menu items) still get a stable name.
+            var psdName = !string.IsNullOrEmpty(className)
+                ? className
+                : ResolveClassName(doc, GetActiveSettings());
 
             // imageOutputRoot is something like "Assets/PSDImages" — make
             // sure both halves agree on the separator style.
@@ -932,6 +1032,14 @@ namespace PSDImporter.Editor
 
             bool overwriteAll = false;
             bool noOverwriteAll = false;
+
+            // Index of every existing PNG under imageOutputRoot, keyed
+            // by filename. We need it because the user might decide to
+            // "keep" an existing image, but the existing copy could
+            // live in another subfolder (e.g. <root>/<SomeOtherPsd>/close.png)
+            // — we have to point the prefab's image reference at THAT
+            // file, otherwise the prefab ends up with a blank Image.
+            var existingIndex = BuildExistingPngIndex(rootAbs, false, 0f, 0f);
 
             foreach (var n in doc.root.SelfAndDescendants())
             {
@@ -954,9 +1062,76 @@ namespace PSDImporter.Editor
 
                 if (!File.Exists(srcPath))
                 {
+                    // Source PNG is missing — usually because Python
+                    // wrote the export to a different folder than
+                    // psdExportRoot (the user might have pointed
+                    // imageOutputRoot at the same place they configured
+                    // the Python tool, or the PSD was hand-edited).
+                    // Fall back to: is there a same-named PNG anywhere
+                    // in imageOutputRoot that we can use as the
+                    // prefab's image source?
+                    if (existingIndex.TryGetValue(fileName, out var fallbackHits)
+                        && fallbackHits.Count > 0)
+                    {
+                        var fallbackAbs = fallbackHits[0].path;
+                        var fallbackRel = MakeProjectRelative(
+                            fallbackAbs, rootAbs, rootRel);
+                        s_imagePathOverride[n.id] = fallbackRel;
+                        stats.Add(ImageCopyDecision.SkippedByUser);
+                        Debug.LogWarning(
+                            $"[PSDImporter] Source PNG missing for layer '{n.id}' " +
+                            $"('{srcPath}'). Binding prefab to existing " +
+                            $"image at '{fallbackRel}' instead.");
+                        continue;
+                    }
                     Debug.LogWarning(
                         $"[PSDImporter] Source PNG missing: '{srcPath}' (for layer '{n.id}'). " +
-                        "Skipping — Python tool may not have written it yet.");
+                        "Skipping — Python tool may not have written it yet, " +
+                        "and no fallback copy exists under imageOutputRoot.");
+                    continue;
+                }
+
+                // Compute the new PNG's hash once, then find any existing
+                // same-named file in the whole imageOutputRoot tree. The
+                // "any same-content sibling" path is the one we'll bind
+                // the prefab to if the destination subfolder doesn't
+                // already have a usable file.
+                var newHash = Sha256OfFile(srcPath);
+                string sameContentSiblingAbs = null;  // absolute path of a
+                                                     // PNG elsewhere in the
+                                                     // tree with identical
+                                                     // content (sha match)
+                List<(string path, string hash)> sameNameHits = null;
+                if (existingIndex.TryGetValue(fileName, out sameNameHits))
+                {
+                    foreach (var (p, h) in sameNameHits)
+                    {
+                        if (h == newHash && p != dstAbs)
+                        {
+                            sameContentSiblingAbs = p;
+                            break;
+                        }
+                    }
+                }
+
+                // Fast path: if a same-content copy already exists
+                // anywhere under imageOutputRoot (typically a sibling
+                // subfolder from a previous PSD import), bind the
+                // prefab to it directly and skip both the resolver
+                // window and the legacy yes/no prompt. The point of
+                // imageOutputRoot is "deduped image set" — re-copying
+                // a byte-identical PNG into this PSD's own subfolder
+                // just bloats Assets/ and breaks the dedup contract.
+                // (We still let the resolver / prompt run when the
+                // sibling's content actually differs from the new
+                // export, because that's a real conflict the user
+                // should see.)
+                if (sameContentSiblingAbs != null)
+                {
+                    var siblingRel = MakeProjectRelative(
+                        sameContentSiblingAbs, rootAbs, rootRel);
+                    s_imagePathOverride[n.id] = siblingRel;
+                    stats.Add(ImageCopyDecision.SkippedByUser);
                     continue;
                 }
 
@@ -973,36 +1148,72 @@ namespace PSDImporter.Editor
                         stats.Add(existingExists
                             ? ImageCopyDecision.Overwritten
                             : ImageCopyDecision.Copied);
+                        s_imagePathOverride[n.id] = dstRel;
                     }
                     else
                     {
-                        if (existingExists)
+                        // User wants to keep whatever was there. Three
+                        // sub-cases:
+                        //   1) Destination already has identical content
+                        //      → no copy, dstRel points at the existing
+                        //        dst file (the prefab will reuse it).
+                        //   2) Destination has a different file (or no
+                        //      file) but a sibling under another PSD
+                        //      folder has identical content → bind the
+                        //        prefab to that sibling. The new PSD
+                        //        subfolder doesn't get a copy; the
+                        //        existing sibling does the job.
+                        //   3) Nothing matches anywhere → we still need
+                        //      the image, so copy it.
+                        if (existingExists && Sha256OfFile(dstAbs) == newHash)
                         {
                             stats.Add(ImageCopyDecision.SkippedByUser);
+                            s_imagePathOverride[n.id] = dstRel;
+                        }
+                        else if (sameContentSiblingAbs != null)
+                        {
+                            stats.Add(ImageCopyDecision.SkippedByUser);
+                            // Translate the absolute path back to a
+                            // project-relative Asset path so Unity's
+                            // AssetDatabase can find it.
+                            var siblingRel = MakeProjectRelative(
+                                sameContentSiblingAbs, rootAbs, rootRel);
+                            s_imagePathOverride[n.id] = siblingRel;
                         }
                         else
                         {
-                            // No existing file — we still need the image
-                            // for the prefab, so copy it.
                             Directory.CreateDirectory(Path.GetDirectoryName(dstAbs) ?? "");
                             File.Copy(srcPath, dstAbs, overwrite: false);
                             stats.Add(ImageCopyDecision.Copied);
+                            s_imagePathOverride[n.id] = dstRel;
                         }
                     }
-                    s_imagePathOverride[n.id] = dstRel;
                     continue;
                 }
 
                 // No pre-decision — fall back to the legacy per-file
                 // yes/no/yes-to-all dialog.
-                var newHash = Sha256OfFile(srcPath);
                 if (TryCopyOrPrompt(srcPath, dstAbs, newHash, ref overwriteAll, ref noOverwriteAll, out var decision))
                 {
                     s_imagePathOverride[n.id] = dstRel;
                     stats.Add(decision);
                 }
-                // else: user said "no" — leave existing file in place AND
-                //       don't bind this image to the prefab.
+                else
+                {
+                    // User said "no" via the legacy dialog — same
+                    // "find a sibling to bind to" treatment as the
+                    // resolver-window "keep" path, so the prefab
+                    // doesn't end up with a blank image.
+                    if (sameContentSiblingAbs != null)
+                    {
+                        var siblingRel = MakeProjectRelative(
+                            sameContentSiblingAbs, rootAbs, rootRel);
+                        s_imagePathOverride[n.id] = siblingRel;
+                    }
+                    // else: no sibling — fall through with no entry;
+                    // BuildPrefab will see a missing id and emit a
+                    // null Image sprite (still logged as a warning).
+                }
             }
             AssetDatabase.Refresh();
 
@@ -1084,75 +1295,217 @@ namespace PSDImporter.Editor
 
         /// <summary>
         /// Walk the document and find every image-bearing layer whose
-        /// destination file already exists AND has a different sha256
-        /// from the new PNG. Returned list is empty when there are no
-        /// conflicts (caller can skip opening the resolver UI in that
-        /// case). Used by the conflict resolver window to show the user
-        /// a preview of every diff before deciding.
+        /// PNG would overwrite an EXISTING file in the image output root
+        /// with different content.
+        ///
+        /// Important: the scan covers the ENTIRE <imageOutputRoot>/ tree,
+        /// not just the destination subfolder for this PSD. The reason:
+        /// a PNG named "close.png" might already live in
+        /// <root>/<SomeOtherPsd>/close.png from a previous import of a
+        /// different PSD, and the user would reasonably want to know
+        /// "you're about to write a file that already exists" even if
+        /// the target subfolder is empty.
+        ///
+        /// The list is empty when there are no conflicts (caller should
+        /// skip opening the resolver UI in that case). Used by the
+        /// conflict resolver window to show the user a preview of every
+        /// diff before deciding.
         /// </summary>
         public static List<ImageConflictResolverWindow.ImageConflict> PreScanImageConflicts(
-            PsdDocument doc, string jsonPath, string imageOutputRoot)
+            PsdDocument doc, string jsonPath, string imageOutputRoot,
+            string className = null)
         {
             var result = new List<ImageConflictResolverWindow.ImageConflict>();
             if (doc == null) return result;
             var jsonDir = Path.GetDirectoryName(Path.GetFullPath(jsonPath)) ?? "";
-            // Match the destination folder used by SetImagePathResolver
-            // — they have to agree, or the conflict list points at the
-            // wrong files.
-            var psdName = ResolveClassName(doc, GetActiveSettings());
+            // Same convention as SetImagePathResolver: prefer the
+            // caller-supplied className, fall back to resolving from
+            // global settings.
+            var psdName = !string.IsNullOrEmpty(className)
+                ? className
+                : ResolveClassName(doc, GetActiveSettings());
             var rootRel = imageOutputRoot.Replace('\\', '/').TrimEnd('/');
             var rootAbs = Path.GetFullPath(
                 Path.Combine(Path.GetDirectoryName(Application.dataPath) ?? "", rootRel));
 
-            int scanned = 0, srcMissing = 0, dstMissing = 0, identical = 0;
-
+            // First pass: collect every new image's content hash. The
+            // count drives a progress bar so the user isn't staring at
+            // a frozen dialog when the PSD has hundreds of layers.
+            var newImages = new List<(string fileName, string srcPath, string hash)>();
+            int scanned = 0, srcMissing = 0;
             foreach (var n in doc.root.SelfAndDescendants())
             {
                 if (!n.HasImage || string.IsNullOrEmpty(n.imageFile)) continue;
                 scanned++;
                 var srcPath = Path.Combine(jsonDir, n.imageFile).Replace('\\', '/');
-                var fileName = Path.GetFileName(n.imageFile);
-                var dstRel = $"{rootRel}/{psdName}/{fileName}";
-                var dstAbs = Path.Combine(rootAbs, psdName, fileName)
-                                    .Replace('\\', '/');
-
                 if (!File.Exists(srcPath)) { srcMissing++; continue; }
-                if (!File.Exists(dstAbs)) { dstMissing++; continue; }
-
-                var newHash = Sha256OfFile(srcPath);
-                var existingHash = Sha256OfFile(dstAbs);
-                if (newHash == existingHash) { identical++; continue; }  // same content → not a conflict
-
-                result.Add(new ImageConflictResolverWindow.ImageConflict
-                {
-                    layerId           = n.id,
-                    layerName         = n.name,
-                    psdName           = psdName,
-                    newImagePath      = srcPath,
-                    existingImagePath = dstAbs,
-                    newSizeBytes      = (int)new FileInfo(srcPath).Length,
-                    existingSizeBytes = (int)new FileInfo(dstAbs).Length,
-                    // Read pixel dimensions straight from the PNG header —
-                    // much cheaper than LoadImage() and good enough for the
-                    // "size changed" warning the user wants to see.
-                    newWidth          = PngDimensions(srcPath).w,
-                    newHeight         = PngDimensions(srcPath).h,
-                    existingWidth     = PngDimensions(dstAbs).w,
-                    existingHeight    = PngDimensions(dstAbs).h,
-                    newHash           = ShortHash(newHash),
-                    existingHash      = ShortHash(existingHash),
-                });
+                var hash = Sha256OfFile(srcPath);
+                var fileName = Path.GetFileName(n.imageFile);
+                newImages.Add((fileName, srcPath, hash));
             }
 
-            Debug.Log(
-                $"[PSDImporter] PreScanImageConflicts: scanned={scanned} " +
-                $"srcMissing={srcMissing} dstMissing={dstMissing} " +
-                $"existingIdentical={identical} → {result.Count} conflict(s) to review");
+            // Build the existing-PNG index once. key = filename,
+            // value = list of (fullPath, hash) under <imageOutputRoot>/.
+            // A file can appear under multiple subfolders (one per
+            // PSD that imported it), so we keep all hits.
+            // We also build a per-(filename,hash) set so a same-content
+            // file (already imported by this same PSD last time, or by
+            // another PSD that produced the same bytes) doesn't show up
+            // as a conflict.
+            const int PROGRESS_THRESHOLD = 50;
+            var useProgressBar = scanned >= PROGRESS_THRESHOLD;
+            try
+            {
+                if (useProgressBar)
+                    EditorUtility.DisplayProgressBar("PSD Importer",
+                        "扫描现有图片…", 0f);
+
+                var existingIndex = BuildExistingPngIndex(rootAbs, useProgressBar,
+                    0.0f, 0.5f);
+
+                if (useProgressBar)
+                    EditorUtility.DisplayProgressBar("PSD Importer",
+                        "比对图片…", 0.5f);
+
+                int identical = 0, compareIndex = 0;
+                foreach (var (fileName, srcPath, newHash) in newImages)
+                {
+                    compareIndex++;
+                    if (useProgressBar)
+                    {
+                        EditorUtility.DisplayProgressBar("PSD Importer",
+                            $"比对图片 ({compareIndex}/{newImages.Count})…",
+                            0.5f + 0.5f * (compareIndex / (float)newImages.Count));
+                    }
+
+                    if (!existingIndex.TryGetValue(fileName, out var hits))
+                        continue;   // no existing PNG with this name → safe to write
+
+                    // Find any existing file with the SAME content → no
+                    // conflict. Otherwise, the FIRST existing file with
+                    // DIFFERENT content is the one we'd be overwriting.
+                    // (If multiple PSDs share the same filename with
+                    // different content we still only need one entry —
+                    // the user gets to decide once and the file ends up
+                    // either overwritten with the new content or left
+                    // alone in place; in the latter case the OTHER
+                    // PSD's copy stays intact because it lives in a
+                    // different subfolder.)
+                    string overwritePath = null, overwriteHash = null;
+                    foreach (var (path, hash) in hits)
+                    {
+                        if (hash == newHash) { identical++; overwritePath = null; break; }
+                        if (overwritePath == null)
+                        {
+                            overwritePath = path;
+                            overwriteHash = hash;
+                        }
+                    }
+                    if (overwritePath == null) continue;
+
+                    // Skip if the "overwrite" target is in the same
+                    // destination subfolder AND has same content as
+                    // before — that's the "re-imported identical" case.
+                    // Already filtered by the hash==newHash check above.
+
+                    result.Add(new ImageConflictResolverWindow.ImageConflict
+                    {
+                        layerId           = $"{fileName} → {psdName}",
+                        // The layer id is unique within the doc; using
+                        // the file name + target subfolder makes the
+                        // conflict entry self-describing in the
+                        // resolver UI even when several PSDs share a
+                        // layer name.
+                        layerName         = fileName,
+                        psdName           = psdName,
+                        newImagePath      = srcPath,
+                        existingImagePath = overwritePath,
+                        newSizeBytes      = (int)new FileInfo(srcPath).Length,
+                        existingSizeBytes = (int)new FileInfo(overwritePath).Length,
+                        newWidth          = PngDimensions(srcPath).w,
+                        newHeight         = PngDimensions(srcPath).h,
+                        existingWidth     = PngDimensions(overwritePath).w,
+                        existingHeight    = PngDimensions(overwritePath).h,
+                        newHash           = ShortHash(newHash),
+                        existingHash      = ShortHash(overwriteHash),
+                    });
+                }
+
+                Debug.Log(
+                    $"[PSDImporter] PreScanImageConflicts: scanned={scanned} " +
+                    $"srcMissing={srcMissing} identical={identical} " +
+                    $"existingFiles={existingIndex.Sum(kv => kv.Value.Count)} " +
+                    $"→ {result.Count} conflict(s) to review");
+            }
+            finally
+            {
+                if (useProgressBar) EditorUtility.ClearProgressBar();
+            }
             return result;
+        }
+
+        // Walk the whole <imageOutputRoot>/ tree once, building a map
+        // from filename → list of (fullPath, sha256). Capped at the
+        // project's actual export root — we don't recurse into
+        // Library/, Temp/, etc. unless they happen to live under
+        // <imageOutputRoot> (which they shouldn't).
+        //
+        // `progressFrom` / `progressTo` let the caller report sub-steps
+        // in a multi-stage scan.
+        private static Dictionary<string, List<(string path, string hash)>>
+            BuildExistingPngIndex(string rootAbs, bool showProgress,
+            float progressFrom, float progressTo)
+        {
+            var index = new Dictionary<string, List<(string, string)>>(
+                StringComparer.OrdinalIgnoreCase);
+            if (!Directory.Exists(rootAbs)) return index;
+
+            var files = Directory.GetFiles(rootAbs, "*.png",
+                SearchOption.AllDirectories);
+            for (int i = 0; i < files.Length; i++)
+            {
+                if (showProgress)
+                {
+                    EditorUtility.DisplayProgressBar("PSD Importer",
+                        $"扫描现有图片 ({i + 1}/{files.Length})…",
+                        progressFrom + (progressTo - progressFrom) *
+                            ((i + 1) / (float)files.Length));
+                }
+                var path = files[i];
+                string hash;
+                try { hash = Sha256OfFile(path); }
+                catch { continue; }   // file locked, deleted between scan and hash — skip
+                var key = Path.GetFileName(path);
+                if (!index.TryGetValue(key, out var list))
+                    index[key] = list = new List<(string, string)>();
+                list.Add((path, hash));
+            }
+            return index;
         }
 
         private static string ShortHash(string full) =>
             full.Length >= 22 ? full.Substring(0, 22) : full;
+
+        // Translate an absolute PNG path (e.g. C:\project\Assets\PSDImages\
+        // SomeOtherPSD\close.png) into a project-relative Asset path
+        // ("Assets/PSDImages/SomeOtherPSD/close.png") so the entry
+        // matches what AssetDatabase.LoadAssetAtPath expects and is
+        // what the prefab's image reference is written against.
+        //
+        // rootAbs / rootRel are the imageOutputRoot in absolute and
+        // relative form (we already have them in the caller).
+        private static string MakeProjectRelative(
+            string absolute, string rootAbs, string rootRel)
+        {
+            var normAbs = absolute.Replace('\\', '/').TrimEnd('/');
+            var normRoot = rootAbs.Replace('\\', '/').TrimEnd('/');
+            if (normAbs.StartsWith(normRoot + "/", System.StringComparison.OrdinalIgnoreCase))
+                return rootRel + "/" + normAbs.Substring(normRoot.Length + 1);
+            // Defensive fallback — should not happen because
+            // BuildExistingPngIndex only ever returns paths under
+            // rootAbs.
+            return normAbs;
+        }
 
         /// <summary>
         /// Delete the source PNGs the Python tool wrote under

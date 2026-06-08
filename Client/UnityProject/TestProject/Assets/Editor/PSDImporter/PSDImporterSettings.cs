@@ -36,21 +36,6 @@ namespace PSDImporter.Editor
                  "Each PSD becomes a subfolder named after the PSD file.")]
         public string prefabOutputRoot = "Assets/PSDImport";
 
-        [Tooltip("Override the generated prefab's base name. If empty " +
-                 "(default), the PSD file name is used. This is the " +
-                 "single-source override that drives the prefab filename, " +
-                 "the subfolder under prefabOutputRoot, the root " +
-                 "GameObject name, the generated NodeProvider + Window " +
-                 "class names, and the UIBindData asset name — keeping " +
-                 "all five in lockstep.\n\n" +
-                 "Set to 'LoginView' to import a '登录.psd' but produce " +
-                 "Assets/PSDImport/LoginView/LoginView.prefab, " +
-                 "LoginViewNodeProvider, LoginViewWindow, etc. Useful " +
-                 "when a single PSD has several alternative UIs in it " +
-                 "(toggle the others' group visibility off) and you want " +
-                 "a friendly English name for the code classes.")]
-        public string prefabNameOverride = "";
-
         [Tooltip("Root folder under Assets/ where imported PNGs go. " +
                  "Each PSD gets its own subfolder inside this root, e.g. " +
                  "'Assets/PSDImages/LoginUI/btn_login.png'. " +

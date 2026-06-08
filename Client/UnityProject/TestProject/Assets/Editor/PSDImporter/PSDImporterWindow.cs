@@ -37,17 +37,38 @@ namespace PSDImporter.Editor
         private SerializedObject     _settingsSO;   // null until a settings asset is assigned
         private SerializedProperty   _prefabOutputRootProp;
         private SerializedProperty   _imageOutputRootProp;
-        private SerializedProperty   _prefabNameOverrideProp;
 
         private List<JsonEntry> _entries = new List<JsonEntry>();
         private string _lastReport = "";
         private Vector2 _scroll;
+        // 0-based page index for the JSON list. Reset to 0 by Scan()
+        // and ImportOne/ImportChanged so we don't get stranded on a
+        // page that no longer exists after the data set shrinks.
+        private int _jsonListPage = 0;
+        // JSON list page size. 20 is small enough that 5 pages
+        // covers the typical project (~100 PSDs) without the window
+        // ballooning, and large enough that the pager footer stays
+        // out of the way for small lists. Tweak here if the team
+        // finds it too dense / too sparse.
+        private const int kJsonListPageSize = 20;
 
         // PSD files the user has dragged into the window (or picked via
         // the file dialog). Drives the "选中 PSD 并转换 + 导入" button.
         // Absolute paths (not Assets/-relative) because psd_to_json.py
         // reads them off disk. Empty list ⇒ button is disabled.
-        private List<string> _droppedPsdPaths = new List<string>();
+        // Entry in the upper "待导入的 PSD 文件" staging list. Wraps
+        // the dropped .psd path with the user-set per-PSD prefab-name
+        // override (empty = use the PSD file name when Import runs).
+        // Keeping both on the row means the override travels with
+        // the file through the Python-run + Import flow — no
+        // separate map to keep in sync.
+        private class StagingEntry
+        {
+            public string path;
+            public string prefabNameOverride = "";
+        }
+
+        private List<StagingEntry> _droppedPsdPaths = new List<StagingEntry>();
 
         // debounce for auto-scan
         private double _nextRefresh;
@@ -104,11 +125,31 @@ namespace PSDImporter.Editor
             public string psdName;
             public string status;        // 'new' | 'changed' | 'unchanged'
             public DateTime lastImport;
+            // Per-row override for the prefab / class name. Empty =
+            // use the PSD file name. Two PSDs in one batch can have
+            // different prefab names without sharing a global toggle.
+            public string prefabNameOverride = "";
+            // Persisted in _psd_cache.json (lastImportedPrefabPath) —
+            // the prefab the importer last wrote for this JSON.
+            // Window reads it during Scan to pre-fill
+            // prefabNameOverride above (so the user's last successful
+            // class name carries over across re-imports), and writes
+            // it back from the import report so the next Scan still
+            // has something to read. Not rendered in the list itself.
+            public string lastImportedPrefabPath = "";
         }
 
         // ─── menu ──────────────────────────────────────────────────
 
-        [MenuItem(MenuPath)]
+        // Hotkey: Shift+U. The `#` is Unity's "Shift" modifier in
+        // MenuItem strings (alongside `%` = Ctrl, `&` = Alt, `_` =
+        // literal — see the Unity manual's "MenuItem" page). The
+        // resulting menu item shows up as "Open Window    Shift+U"
+        // in Tools > PSD Importer, and the shortcut works
+        // everywhere in the editor — no need for the window to be
+        // focused. If the user has rebound it via Unity's Shortcut
+        // Manager (Edit > Shortcuts) their override wins.
+        [MenuItem(MenuPath + " #u")]
         public static void Open()
         {
             var w = GetWindow<PSDImporterWindow>("PSD Importer");
@@ -195,7 +236,7 @@ namespace PSDImporter.Editor
                 if (_settings == null)
                 {
                     EditorGUILayout.HelpBox(
-                        "⚠ 没有设置资产。在 Project 窗口里创建一个:\n" +
+                        "【警告】没有设置资产。在 Project 窗口里创建一个:\n" +
                         "  右键 → Create → PSD Importer → Settings。\n" +
                         "然后拖到上面的字段里。",
                         MessageType.None);
@@ -221,24 +262,9 @@ namespace PSDImporter.Editor
                     // Prefab name override. Empty = use the PSD file's
                     // name as-is. Set to a custom value (e.g.
                     // "LoginView") to drive the prefab filename, the
-                    // subfolder under prefabOutputRoot, the root
-                    // GameObject name, the generated NodeProvider +
-                    // Window class names, and the UIBindData asset
-                    // name — all five in lockstep. Useful when one
-                    // PSD holds several alternative UIs (toggle the
-                    // others' group visibility off) and you want a
-                    // friendly English name for the generated code.
-                    if (_prefabNameOverrideProp != null)
-                    {
-                        EditorGUILayout.PropertyField(_prefabNameOverrideProp,
-                            new GUIContent("Prefab 名称覆盖"));
-                        EditorGUILayout.LabelField(
-                            "  (空 = 用 PSD 文件名;非空会同时驱动预制体文件名、子目录、" +
-                            "类名、UIBindData 资产名,五个保持一致)",
-                            EditorStyles.miniLabel);
-                    }
                     EditorGUILayout.LabelField(
-                        "  (每个 PSD → <imageOutputRoot>/<PsdName>/<layerName>.png)",
+                        "  (每个 PSD → <imageOutputRoot>/<PsdName>/<layerName>.png; " +
+                        "Prefab 名称覆盖在下方 staging 列表 / JSON 列表的每行单独设)",
                         EditorStyles.miniLabel);
                     if (_settingsSO.ApplyModifiedProperties())
                     {
@@ -253,7 +279,7 @@ namespace PSDImporter.Editor
             if (string.IsNullOrEmpty(_lastReport)) return;
             // No MessageType arg → no icon. Some Unity 2022 themes
             // render every HelpBox with a red "!" regardless of type.
-            EditorGUILayout.HelpBox(_lastReport, MessageType.None);
+            EditorGUILayout.HelpBox(_lastReport, MessageType.Info);
         }
 
         private void DrawActions()
@@ -266,7 +292,7 @@ namespace PSDImporter.Editor
                 // reorder, +/- buttons to add/remove, full file path
                 // visible on hover). Plus a "添加…" button + drop zone
                 // The list's footer "+" / "-" buttons (drawn by
-                // ReorderableList) plus the toolbar "+" / "🗑" in
+                // ReorderableList) plus the toolbar "+" / "" in
                 // DrawPsdListHeader give the user all the add/remove
                 // affordances they need. The import button at the
                 // bottom runs Python + build for everything in the list.
@@ -275,10 +301,17 @@ namespace PSDImporter.Editor
                 DrawPsdImportButton();
             }
 
+            // No built-in Unity icon for Python (the closest match
+            // would be a generic "passed"/"test" checkmark, which is
+            // semantically wrong). Keep this button as plain text +
+            // center it within the row so the layout looks deliberate
+            // rather than left-aligned-on-purpose.
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("🐍 测试 Python", GUILayout.Height(24)))
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button("测试 Python", GUILayout.Width(120), GUILayout.Height(24)))
                     TestPython();
+                GUILayout.FlexibleSpace();
             }
         }
 
@@ -293,7 +326,7 @@ namespace PSDImporter.Editor
                 if (_psdList == null)
                 {
                     _psdList = new ReorderableList(
-                        _droppedPsdPaths, typeof(string),
+                        _droppedPsdPaths, typeof(StagingEntry),
                         draggable: true,
                         // Hide Unity's default header so the empty-state
                         // doesn't render the English "List is Empty"
@@ -316,20 +349,49 @@ namespace PSDImporter.Editor
                     _psdList.drawElementCallback = (rect, index, active, focused) =>
                     {
                         if (index < 0 || index >= _droppedPsdPaths.Count) return;
-                        var path = _droppedPsdPaths[index];
-                        var name = Path.GetFileName(path);
+                        var entry = _droppedPsdPaths[index];
+                        var path  = entry.path ?? "";
+                        var name  = Path.GetFileName(path);
+                        // 3 columns: filename / directory / override.
+                        // Squeeze the filename a bit to make room for
+                        // the override text field on the right.
                         // First column: filename (bold), truncated with
                         // middle ellipsis if it doesn't fit.
-                        var nameRect = new Rect(rect.x, rect.y + 2, rect.width * 0.55f - 4,
+                        var nameRect = new Rect(rect.x, rect.y + 2, rect.width * 0.45f - 4,
                                                 rect.height - 4);
                         GUI.Label(nameRect, new GUIContent(name,
                             path), EditorStyles.boldLabel);
                         // Second column: directory (greyed, tooltip = full path).
                         var dirRect = new Rect(nameRect.xMax + 8, rect.y + 2,
-                                               rect.width * 0.45f - 8, rect.height - 4);
+                                               rect.width * 0.40f - 8, rect.height - 4);
                         var dir = Path.GetDirectoryName(path) ?? "";
                         GUI.Label(dirRect, new GUIContent(dir, path),
                             EditorStyles.miniLabel);
+                        // Third column: per-PSD prefab-name override.
+                        // Same width as the row in the JSON list below
+                        // (110) so the two tables feel like the same
+                        // widget. The header's tooltip carries the
+                        // full explanation.
+                        var overrideRect = new Rect(dirRect.xMax + 8, rect.y + 2,
+                                                    110, rect.height - 4);
+                        entry.prefabNameOverride = EditorGUI.TextField(
+                            overrideRect, entry.prefabNameOverride);
+                        // Tag the label with a tooltip via a hidden
+                        // label pass — EditorGUI.TextField doesn't
+                        // accept a GUIContent, so draw an empty label
+                        // overlay with the tooltip on the same rect.
+                        // (EditorGUI.LabelField respects GUIContent.)
+                        // NOTE: Tooltip on a TextField is best-effort;
+                        // some Unity versions don't show it. The label
+                        // outside the rect (see header tooltip) carries
+                        // the main explanation.
+                    };
+                    _psdList.elementHeightCallback = index =>
+                    {
+                        // Slightly taller row than default so the
+                        // TextField doesn't look cramped against the
+                        // filename/dir labels.
+                        return 22f;
                     };
                     _psdList.onChangedCallback = list =>
                     {
@@ -376,6 +438,17 @@ namespace PSDImporter.Editor
                         ? "待导入的 PSD 文件(空)"
                         : $"待导入的 PSD 文件 ({_droppedPsdPaths.Count})",
                     EditorStyles.boldLabel);
+                // Tiny inline hint that the rightmost cell on each
+                // row is a prefab-name override. Tooltip carries the
+                // full fallback chain so a user hovering gets the
+                // long-form explanation.
+                GUILayout.Label(
+                    new GUIContent("  … 右侧可填 Prefab 名称覆盖",
+                        "空 = 用 PSD 文件名。\n" +
+                        "非空 = 这个 PSD 的预制体名、子目录、根 GameObject、" +
+                        "NodeProvider / Window 类名、UIBindData 资产名都用这个名字。\n" +
+                        "一行一个名字,批量导入时不同 PSD 可以各自起名互不干扰。"),
+                    EditorStyles.miniLabel);
                 GUILayout.FlexibleSpace();
                 GUI.enabled = true;
             }
@@ -428,7 +501,7 @@ namespace PSDImporter.Editor
             var prevColor = GUI.color;
             if (isHovering) GUI.color = new Color(0.6f, 0.85f, 1f, 0.4f);
             GUI.Box(rect,
-                "📂  把 .psd 文件拖到这里或点下方“+”选文件",
+                "把 .psd 文件拖到这里或点下方“+”选文件",
                 EditorStyles.helpBox);
             GUI.color = prevColor;
 
@@ -459,15 +532,22 @@ namespace PSDImporter.Editor
             var ready = _settings != null && _droppedPsdPaths.Count > 0;
             using (new EditorGUILayout.HorizontalScope())
             {
+                GUILayout.FlexibleSpace();
                 GUI.enabled = ready;
                 var label = _droppedPsdPaths.Count == 1
-                    ? "✅  转换 + 导入选中的 PSD"
-                    : $"✅  转换 + 导入 {_droppedPsdPaths.Count} 个 PSD";
-                if (GUILayout.Button(label, GUILayout.Height(32)))
+                    ? "转换 + 导入选中的 PSD"
+                    : $"转换 + 导入 {_droppedPsdPaths.Count} 个 PSD";
+                // Fixed width so the button doesn't stretch to fill the
+                // row — GUILayout.Button defaults to ExpandWidth(true)
+                // when no width is given. 280px fits both single-PSD
+                // and N-PSD text comfortably.
+                if (GUILayout.Button(label,
+                    GUILayout.Width(280), GUILayout.Height(32)))
                 {
                     ImportDroppedPsds();
                 }
                 GUI.enabled = true;
+                GUILayout.FlexibleSpace();
             }
         }
 
@@ -499,9 +579,25 @@ namespace PSDImporter.Editor
         // Merge new PSD paths into the list, deduped, keeping existing
         // order. We accept both raw OS paths (from Finder) and Unity
         // project asset references (drag from Project window).
+        // Each row gets a fresh StagingEntry with an empty override —
+        // the user fills that in on the row (or leaves it empty to
+        // fall through to the PSD file name).
         private void AddPsdPaths(string[] paths, UnityEngine.Object[] objects)
         {
             var added = 0;
+            // Local helper so all three branches (object, folder, file)
+            // share the same dedupe + entry-creation logic.
+            bool TryAdd(string abs)
+            {
+                foreach (var existing in _droppedPsdPaths)
+                {
+                    if (string.Equals(existing.path, abs,
+                                       System.StringComparison.OrdinalIgnoreCase))
+                        return false;
+                }
+                _droppedPsdPaths.Add(new StagingEntry { path = abs });
+                return true;
+            }
             if (objects != null)
             {
                 foreach (var o in objects)
@@ -510,9 +606,7 @@ namespace PSDImporter.Editor
                     if (string.IsNullOrEmpty(ap)) continue;
                     if (!ap.EndsWith(".psd", System.StringComparison.OrdinalIgnoreCase)) continue;
                     var abs = Path.GetFullPath(ap).Replace('\\', '/');
-                    if (_droppedPsdPaths.Contains(abs)) continue;
-                    _droppedPsdPaths.Add(abs);
-                    added++;
+                    if (TryAdd(abs)) added++;
                 }
             }
             if (paths != null)
@@ -528,17 +622,13 @@ namespace PSDImporter.Editor
                                      SearchOption.TopDirectoryOnly))
                         {
                             var abs = Path.GetFullPath(f).Replace('\\', '/');
-                            if (_droppedPsdPaths.Contains(abs)) continue;
-                            _droppedPsdPaths.Add(abs);
-                            added++;
+                            if (TryAdd(abs)) added++;
                         }
                     }
                     else if (File.Exists(p))
                     {
                         var abs = Path.GetFullPath(p).Replace('\\', '/');
-                        if (_droppedPsdPaths.Contains(abs)) continue;
-                        _droppedPsdPaths.Add(abs);
-                        added++;
+                        if (TryAdd(abs)) added++;
                     }
                 }
             }
@@ -553,7 +643,7 @@ namespace PSDImporter.Editor
             }
         }
 
-        // Run the same per-file flow as the old "📁" button, but iterate
+        // Run the same per-file flow as the old "" button, but iterate
         // over every staged path instead of prompting for a single one.
         private void ImportDroppedPsds()
         {
@@ -576,20 +666,24 @@ namespace PSDImporter.Editor
             var failedNames = new List<string>();
             // Snapshot — the user could conceivably drag more in
             // mid-import and we don't want to pick those up here.
+            // We snapshot StagingEntry (not just path) so each row's
+            // per-PSD prefab-name override travels with the import
+            // call into RunOnePsd.
             var snapshot = _droppedPsdPaths.ToList();
-            foreach (var psdPath in snapshot)
+            foreach (var entry in snapshot)
             {
-                if (!File.Exists(psdPath))
+                var psdPath = entry.path;
+                if (string.IsNullOrEmpty(psdPath) || !File.Exists(psdPath))
                 {
                     failed++;
                     failedNames.Add($"{Path.GetFileName(psdPath)} (文件不存在)");
                     continue;
                 }
-                _lastReport = $"🔄  正在处理 {Path.GetFileName(psdPath)} ({success + failed + 1}/{snapshot.Count})…";
+                _lastReport = $"【处理中】 正在处理 {Path.GetFileName(psdPath)} ({success + failed + 1}/{snapshot.Count})…";
                 Repaint();
                 try
                 {
-                    var ok = RunOnePsd(psdPath);
+                    var ok = RunOnePsd(psdPath, entry.prefabNameOverride);
                     if (ok) success++;
                     else
                     {
@@ -606,8 +700,8 @@ namespace PSDImporter.Editor
             }
 
             _lastReport = failed == 0
-                ? $"✅  全部 {success} 个 PSD 处理完成。"
-                : $"⚠ 完成 {success},失败 {failed}。\n失败的文件:\n  - " +
+                ? $"【成功】 全部 {success} 个 PSD 处理完成。"
+                : $"【警告】完成 {success},失败 {failed}。\n失败的文件:\n  - " +
                   string.Join("\n  - ", failedNames);
 
             _droppedPsdPaths.Clear();
@@ -622,7 +716,11 @@ namespace PSDImporter.Editor
         // Runs Python + PSDImporter.Import for one PSD file. Returns
         // true on full success, false on any failure (Python non-zero
         // exit, missing JSON, or Import threw).
-        private bool RunOnePsd(string psdPath)
+        // `prefabNameOverride` is the per-PSD override typed in the
+        // staging row (or null when the one-click "select PSD" path
+        // has no row in the list). Empty string also falls through
+        // to the PSD file name.
+        private bool RunOnePsd(string psdPath, string prefabNameOverride)
         {
             var exportRoot = _settings.GetPsdExportRootAbsolute();
             var args = new[] { psdPath, "--out", exportRoot };
@@ -644,7 +742,7 @@ namespace PSDImporter.Editor
 
             if (!result.ok)
             {
-                _lastReport = $"❌  Python failed for {psdName} " +
+                _lastReport = $"【失败】 Python failed for {psdName} " +
                               $"(exit={result.exitCode}):\n{result.stderr}";
                 Debug.LogError($"[PSDImporter] {result.stderr}");
                 return false;
@@ -653,15 +751,24 @@ namespace PSDImporter.Editor
             var jsonPath = Path.Combine(exportRoot, psdName, psdName + ".json");
             if (!File.Exists(jsonPath))
             {
-                _lastReport = $"❌  Python succeeded for {psdName} " +
+                _lastReport = $"【失败】 Python succeeded for {psdName} " +
                               $"but JSON not found:\n{jsonPath}";
                 return false;
             }
 
             try
             {
+                // Per-PSD override from the staging row. Empty /
+                // null falls through to the PSD file name inside
+                // PSDImporter.Import. (One-click "select PSD" calls
+                // this with null because that path has no
+                // row in the list.)
+                var overrideArg = string.IsNullOrWhiteSpace(prefabNameOverride)
+                    ? null
+                    : prefabNameOverride.Trim();
                 var report = PSDImporter.Import(
-                    jsonPath, _settings, _settings.autoGenerateUIBind);
+                    jsonPath, _settings, _settings.autoGenerateUIBind,
+                    overrideArg);
                 // Stash the report on the global _lastReport only for the
                 // last one — partial results get logged but don't
                 // clobber the running "next file" message.
@@ -672,7 +779,7 @@ namespace PSDImporter.Editor
             }
             catch (Exception ex)
             {
-                _lastReport = $"❌  Import threw for {psdName}:\n{ex.Message}";
+                _lastReport = $"【失败】 Import threw for {psdName}:\n{ex.Message}";
                 Debug.LogException(ex);
                 return false;
             }
@@ -685,40 +792,141 @@ namespace PSDImporter.Editor
             EditorGUILayout.LabelField(
                 $"在 '{_settings.psdExportRoot}' 里找到 {_entries.Count} 个 PSD",
                 EditorStyles.boldLabel);
-            _scroll = EditorGUILayout.BeginScrollView(_scroll, GUILayout.MinHeight(160));
             if (_entries.Count == 0)
             {
                 EditorGUILayout.HelpBox(
                     $"ℹ 在 {exportRoot} 下没找到 <名称>.json 文件。\n" +
-                    "点上面的 📁 让插件帮你跑 Python,或者手动跑:\n" +
+                    "点上面的【文件】让插件帮你跑 Python,或者手动跑:\n" +
                     "  python psd_to_json.py 路径/到/MyUI.psd --out " + _settings.psdExportRoot,
                     MessageType.None);
+                // No entries → no pager to draw, no scroll either.
+                return;
             }
-            else
+
+            // Page bounds. Clamp the cached page index in case Scan()
+            // shrank _entries under us (e.g. user removed PSDs) and
+            // the cached page is now past the end.
+            var totalPages = Math.Max(1,
+                (_entries.Count + kJsonListPageSize - 1) / kJsonListPageSize);
+            if (_jsonListPage < 0) _jsonListPage = 0;
+            if (_jsonListPage >= totalPages) _jsonListPage = totalPages - 1;
+            var pageStart = _jsonListPage * kJsonListPageSize;
+            var pageEnd   = Math.Min(pageStart + kJsonListPageSize, _entries.Count);
+
+            // Page is itself scrollable. Most pages (≤20 rows) fit
+            // without scrolling, but the user can also be looking at
+            // a 4K monitor where the window is huge. Keeping the
+            // inner scroll means the window never grows beyond
+            // the screen.
+            _scroll = EditorGUILayout.BeginScrollView(
+                _scroll, GUILayout.MinHeight(160));
+            for (int i = pageStart; i < pageEnd; i++)
             {
-                foreach (var e in _entries)
-                {
-                    using (new EditorGUILayout.HorizontalScope(EditorStyles.helpBox))
-                    {
-                        var badge = e.status == "unchanged" ? "●"
-                                  : e.status == "changed"   ? "◐"
-                                  : "○";
-                        GUILayout.Label(badge, GUILayout.Width(18));
-                        // Name and path on the SAME line. The path
-                        // middle-elides to fit whatever space is
-                        // left after the name + Import button.
-                        EditorGUILayout.LabelField(e.psdName, EditorStyles.boldLabel);
-                        GUILayout.Space(8);
-                        var pathRect = GUILayoutUtility.GetRect(
-                            0, 16, GUILayout.ExpandWidth(true), GUILayout.Height(16));
-                        var elided = ElideMiddle(e.jsonPath, PathStyle, pathRect.width);
-                        GUI.Label(pathRect, new GUIContent(elided, e.jsonPath), PathStyle);
-                        if (GUILayout.Button("导入", GUILayout.Width(72)))
-                            ImportOne(e);
-                    }
-                }
+                DrawEntryRow(_entries[i]);
             }
             EditorGUILayout.EndScrollView();
+
+            DrawJsonListPager(totalPages, pageStart, pageEnd);
+        }
+
+        // Pager footer for the JSON list. Shows "第 1-20 / 共 53 条",
+        // "第 1 / 3 页", and the four nav buttons. Hidden on
+        // single-page lists so a small project doesn't show a
+        // useless control.
+        private void DrawJsonListPager(int totalPages, int pageStart, int pageEnd)
+        {
+            if (totalPages <= 1) return;
+            using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
+            {
+                GUILayout.Label(
+                    $"第 {pageStart + 1}-{pageEnd} / 共 {_entries.Count} 条 · " +
+                    $"第 {_jsonListPage + 1} / {totalPages} 页",
+                    EditorStyles.miniLabel);
+                GUILayout.FlexibleSpace();
+
+                // Disable the edges when the user is already there
+                // — clearer affordance than a click that does
+                // nothing.
+                var prevEnabled = _jsonListPage > 0;
+                var nextEnabled = _jsonListPage < totalPages - 1;
+                GUI.enabled = prevEnabled;
+                if (GUILayout.Button("首页", EditorStyles.toolbarButton,
+                                     GUILayout.Width(40)))
+                {
+                    _jsonListPage = 0;
+                    _scroll = Vector2.zero;
+                }
+                if (GUILayout.Button("上一页", EditorStyles.toolbarButton,
+                                     GUILayout.Width(60)))
+                {
+                    _jsonListPage = Math.Max(0, _jsonListPage - 1);
+                    _scroll = Vector2.zero;
+                }
+                GUI.enabled = nextEnabled;
+                if (GUILayout.Button("下一页", EditorStyles.toolbarButton,
+                                     GUILayout.Width(60)))
+                {
+                    _jsonListPage = Math.Min(totalPages - 1, _jsonListPage + 1);
+                    _scroll = Vector2.zero;
+                }
+                if (GUILayout.Button("尾页", EditorStyles.toolbarButton,
+                                     GUILayout.Width(40)))
+                {
+                    _jsonListPage = totalPages - 1;
+                    _scroll = Vector2.zero;
+                }
+                GUI.enabled = true;
+
+                // Jump-to-page: a small int field next to the
+                // buttons, useful when there are many pages.
+                GUILayout.Space(8);
+                GUILayout.Label("跳到", EditorStyles.miniLabel,
+                                GUILayout.Width(28));
+                // We use a simple delayed text field; the user
+                // edits the value then presses Enter to commit.
+                // EditorGUILayout.IntField doesn't auto-clamp to
+                // totalPages, so we clamp on change below.
+                var newPage = EditorGUILayout.IntField(
+                    _jsonListPage + 1, GUILayout.Width(40));
+                if (newPage != _jsonListPage + 1)
+                {
+                    _jsonListPage = Math.Clamp(newPage - 1, 0, totalPages - 1);
+                    _scroll = Vector2.zero;
+                }
+                GUILayout.Label("页", EditorStyles.miniLabel);
+            }
+        }
+
+        // Single row of the JSON list — the badge + name + path +
+        // override + Import button. Pulled out of DrawEntryList so
+        // the page loop above stays readable.
+        private void DrawEntryRow(JsonEntry e)
+        {
+            using (new EditorGUILayout.HorizontalScope(EditorStyles.helpBox))
+            {
+                var badge = e.status == "unchanged" ? "●"
+                          : e.status == "changed"   ? "◐"
+                          : "○";
+                GUILayout.Label(badge, GUILayout.Width(18));
+                // Name and path on the SAME line. The path
+                // middle-elides to fit whatever space is left
+                // after the name + Import button.
+                EditorGUILayout.LabelField(e.psdName, EditorStyles.boldLabel);
+                GUILayout.Space(8);
+                var pathRect = GUILayoutUtility.GetRect(
+                    0, 16, GUILayout.ExpandWidth(true), GUILayout.Height(16));
+                var elided = ElideMiddle(e.jsonPath, PathStyle, pathRect.width);
+                GUI.Label(pathRect, new GUIContent(elided, e.jsonPath), PathStyle);
+                // Per-PSD prefab-name override. Empty falls through
+                // to the PSD file name. Keep it short — width 110
+                // matches the visual weight of the badge + name
+                // column so the import button can still anchor to
+                // the right.
+                e.prefabNameOverride = EditorGUILayout.TextField(
+                    e.prefabNameOverride, GUILayout.Width(110));
+                if (GUILayout.Button("导入", GUILayout.Width(72)))
+                    ImportOne(e);
+            }
         }
 
         private void DrawFooter()
@@ -758,13 +966,14 @@ namespace PSDImporter.Editor
                 "Re-running either path updates only changed layers (incremental).\n\n" +
                 "If the new image conflicts with an existing one, a preview\n" +
                 "window appears so you can compare before deciding.\n\n" +
-                "Prefab name override:\n" +
-                "  Empty (default) → prefab named after the PSD file.\n" +
-                "  Set a value (e.g. 'LoginView') → that name drives\n" +
-                "  the prefab file, its subfolder, the root GameObject,\n" +
-                "  the generated NodeProvider + Window classes, and the\n" +
-                "  UIBindData asset. Useful when one PSD holds multiple\n" +
-                "  alternative UIs (toggle the others' group visibility off).\n" +
+                "Prefab name override (per-PSD, on each row in the list):\n" +
+                "  Empty on the row → use the PSD file name.\n" +
+                "  Set a value on the row (e.g. 'LoginView') → that name\n" +
+                "  drives the prefab file, its subfolder, the root\n" +
+                "  GameObject, the generated NodeProvider + Window\n" +
+                "  classes, and the UIBindData asset for THIS PSD only.\n" +
+                "  Different PSDs in the same batch can therefore have\n" +
+                "  different prefab / class names without clashing.\n" +
                 "  Changing the override does NOT auto-migrate a previous\n" +
                 "  import — the old prefab stays where it was. Move it\n" +
                 "  manually or re-import the PSD fresh.\n\n" +
@@ -780,6 +989,14 @@ namespace PSDImporter.Editor
         private void Scan()
         {
             _entries.Clear();
+            // Force the JSON list back to page 0 — the dataset
+            // size (and therefore the page count) can change on
+            // every Scan, and a stale page index would either
+            // show an empty slice or be clamped to the last page
+            // on the next draw. Resetting is simpler than
+            // re-clamping and the user expects page 1 anyway
+            // after a fresh scan.
+            _jsonListPage = 0;
             if (_settings == null) return;
             var root = _settings.GetPsdExportRootAbsolute();
             if (!Directory.Exists(root)) return;
@@ -804,6 +1021,33 @@ namespace PSDImporter.Editor
                             {
                                 e.lastImport = DateTime.TryParse(cache.lastImportedAt, out var dt)
                                     ? dt : default;
+                                // Pull the persisted JSON → Prefab
+                                // mapping so the row can show the user
+                                // where this JSON last imported to.
+                                // If the user changes prefabNameOverride
+                                // the importer writes a new path here
+                                // on the next import.
+                                e.lastImportedPrefabPath =
+                                    cache.lastImportedPrefabPath ?? "";
+                                // Pre-fill the per-PSD override with
+                                // the class name from the last import
+                                // (parsed out of the stored prefab
+                                // path, not re-sanitized — the user
+                                // sees the exact name that landed on
+                                // disk). Empty on the first import;
+                                // stays as whatever the user typed if
+                                // a previous run already set it. This
+                                // is what makes "scan and re-import"
+                                // round-trip correctly: the override
+                                // field picks up the last successful
+                                // value instead of silently falling
+                                // back to the PSD file name.
+                                if (string.IsNullOrEmpty(e.prefabNameOverride))
+                                {
+                                    e.prefabNameOverride =
+                                        PSDImporter.ExtractClassNameFromPrefabPath(
+                                            cache.lastImportedPrefabPath);
+                                }
                             }
                         }
                         catch { /* ignore */ }
@@ -838,12 +1082,26 @@ namespace PSDImporter.Editor
             {
                 if (_settings == null) return;
                 var report = PSDImporter.Import(
-                    e.jsonPath, _settings, _settings.autoGenerateUIBind);
+                    e.jsonPath, _settings,
+                    _settings.autoGenerateUIBind,
+                    string.IsNullOrWhiteSpace(e.prefabNameOverride)
+                        ? null
+                        : e.prefabNameOverride.Trim());
+                // Reflect the new JSON → Prefab mapping back onto the
+                // row. Without this the cached lastImportedPrefabPath
+                // stays stale until the next Scan() (which is only
+                // triggered by a folder change or window reopen) —
+                // and the override field would not pre-fill correctly
+                // if the user re-opens the window mid-session.
+                if (!string.IsNullOrEmpty(report.prefabPath))
+                {
+                    e.lastImportedPrefabPath = report.prefabPath;
+                }
                 _lastReport = FormatReport(e.psdName, report);
             }
             catch (Exception ex)
             {
-                _lastReport = $"❌  Failed: {ex.Message}";
+                _lastReport = $"【失败】 Failed: {ex.Message}";
                 Debug.LogException(ex);
             }
             // Defer Scan+Repaint to next editor frame. Doing it synchronously
@@ -866,7 +1124,20 @@ namespace PSDImporter.Editor
                 {
                     if (_settings == null) return;
                     var r = PSDImporter.Import(
-                        e.jsonPath, _settings, _settings.autoGenerateUIBind);
+                        e.jsonPath, _settings, _settings.autoGenerateUIBind,
+                        string.IsNullOrWhiteSpace(e.prefabNameOverride)
+                            ? null
+                            : e.prefabNameOverride.Trim());
+                    // Same in-place cache update as ImportOne — keep
+                    // the cached lastImportedPrefabPath in sync so
+                    // the next Scan() pre-fills the right override
+                    // (or so the user can immediately re-import and
+                    // see the correct value), without waiting for
+                    // the next Scan().
+                    if (!string.IsNullOrEmpty(r.prefabPath))
+                    {
+                        e.lastImportedPrefabPath = r.prefabPath;
+                    }
                     if (r.skipped) skipped++;
                     else imported++;
                 }
@@ -887,7 +1158,7 @@ namespace PSDImporter.Editor
         {
             if (_settings == null)
             {
-                _lastReport = "⚠ No settings asset. Drag one into the Settings field above first.";
+                _lastReport = "【警告】No settings asset. Drag one into the Settings field above first.";
                 return;
             }
             var py = _settings.pythonExecutable;
@@ -899,14 +1170,14 @@ namespace PSDImporter.Editor
             var result = PythonRunner.Run(py, "", new[] { "--version" });
             if (result.ok)
             {
-                _lastReport = $"✅  Python OK ({result.duration.TotalSeconds:F1}s)\n" +
+                _lastReport = $"【成功】 Python OK ({result.duration.TotalSeconds:F1}s)\n" +
                               $"  exe: {py}\n" +
                               $"  script: {script ?? "<not set>"}\n" +
                               $"  stdout: {result.stdout.Trim()}";
             }
             else
             {
-                _lastReport = $"❌  Python unreachable:\n{result.stderr}\n\n" +
+                _lastReport = $"【失败】 Python unreachable:\n{result.stderr}\n\n" +
                               $"Tried exe: `{py}`\n" +
                               "Fix in the Settings asset's Inspector → 'Python executable'. " +
                               "Use the full path like\n" +
@@ -941,16 +1212,14 @@ namespace PSDImporter.Editor
                 _settingsSO = null;
                 _prefabOutputRootProp = null;
                 _imageOutputRootProp = null;
-                _prefabNameOverrideProp = null;
                 return;
             }
             _settingsSO = new SerializedObject(_settings);
             _prefabOutputRootProp = _settingsSO.FindProperty("prefabOutputRoot");
             _imageOutputRootProp = _settingsSO.FindProperty("imageOutputRoot");
-            _prefabNameOverrideProp = _settingsSO.FindProperty("prefabNameOverride");
         }
 
-        // A path field with a "📁…" browse button. Always constrained to
+        // A path field with a "…" browse button. Always constrained to
         // Assets/ (project-relative). Mirrors the same control on the
         // Settings asset's Inspector so the two UIs feel consistent.
         private static void DrawAssetsFolderField(SerializedProperty prop, string label)
@@ -958,7 +1227,12 @@ namespace PSDImporter.Editor
             using (new EditorGUILayout.HorizontalScope())
             {
                 EditorGUILayout.PropertyField(prop, new GUIContent(label));
-                if (GUILayout.Button("📁…", GUILayout.Width(36)))
+                // Use Unity's built-in folder icon instead of the "…"
+                // emoji — the emoji glyph renders as a blank box in many
+                // editor font themes. Icon name comes from the project's
+                // EditorIcon catalog (Assets/Editor/EditorIcon/EditorIcon.cs).
+                var folderIcon = EditorGUIUtility.IconContent("FolderEmpty Icon");
+                if (GUILayout.Button(folderIcon, GUILayout.Width(36), GUILayout.Height(18)))
                 {
                     var current = ResolveAssetsRelative(prop.stringValue);
                     var picked = EditorUtility.OpenFolderPanel("选择 " + label, current, "");

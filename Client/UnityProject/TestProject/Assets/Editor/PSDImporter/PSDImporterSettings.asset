@@ -16,12 +16,11 @@ MonoBehaviour:
   pythonExecutable: python
   pythonScriptPath: 
   prefabOutputRoot: Assets/PSDImport
-  prefabNameOverride: UIBagMainWindow
   imageOutputRoot: Assets/PSDImages
   autoSetSpriteImporter: 1
   deleteSourceImagesAfterImport: 1
   autoGenerateUIBind: 0
   defaultLayer: 1
-  fallbackFont: {fileID: 0}
+  fallbackFont: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
   fontSearchRoot: Assets
   cacheFileName: _psd_cache.json

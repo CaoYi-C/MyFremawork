@@ -33,7 +33,6 @@ namespace PSDImporter.Editor
         private SerializedProperty _pythonExecutable;
         private SerializedProperty _pythonScriptPath;
         private SerializedProperty _prefabOutputRoot;
-        private SerializedProperty _prefabNameOverride;
         private SerializedProperty _imageOutputRoot;
         private SerializedProperty _autoSetSpriteImporter;
         private SerializedProperty _deleteSourceImagesAfterImport;
@@ -49,7 +48,6 @@ namespace PSDImporter.Editor
             _pythonExecutable           = serializedObject.FindProperty("pythonExecutable");
             _pythonScriptPath           = serializedObject.FindProperty("pythonScriptPath");
             _prefabOutputRoot           = serializedObject.FindProperty("prefabOutputRoot");
-            _prefabNameOverride         = serializedObject.FindProperty("prefabNameOverride");
             _imageOutputRoot            = serializedObject.FindProperty("imageOutputRoot");
             _autoSetSpriteImporter      = serializedObject.FindProperty("autoSetSpriteImporter");
             _deleteSourceImagesAfterImport = serializedObject.FindProperty("deleteSourceImagesAfterImport");
@@ -123,14 +121,6 @@ namespace PSDImporter.Editor
                 "Prefab 输出根 (Assets/)",
                 "生成的 UGUI Prefab 放在这里,每个 PSD 一个子目录。",
                 absoluteStart: "Assets", projectRelative: true);
-            EditorGUILayout.PropertyField(_prefabNameOverride,
-                new GUIContent("Prefab 名称覆盖",
-                    "空 = 用 PSD 文件名。\n" +
-                    "非空 = 整个产物(预制体文件名、子目录、根 GameObject 名、" +
-                    "NodeProvider/Window 类名、UIBindData 资产名)都用这个名字。\n" +
-                    "适用于一个 PSD 里装多个备选 UI(切换其他组可见性),需要" +
-                    "为代码类起一个干净的英文名。\n" +
-                    "改名后不会自动迁移旧 Prefab —— 需要手动移或重新导入。"));
             DrawFolderField(_imageOutputRoot,
                 "图片输出根 (Assets/)",
                 "导入的 PNG 放在这里,每个 PSD 一个子目录 " +
@@ -192,12 +182,16 @@ namespace PSDImporter.Editor
             using (new EditorGUILayout.HorizontalScope())
             {
                 EditorGUILayout.PropertyField(prop, new GUIContent(label, tooltip));
-                if (GUILayout.Button("📁…", GUILayout.Width(36)))
+                // Use the built-in Unity folder icon in place of the
+                // "📁…" emoji — the emoji glyph falls back to a blank
+                // box in many editor font themes. The icon name
+                // (FolderEmpty Icon) is one of the editor's built-in
+                // assets, see Assets/Editor/EditorIcon/EditorIcon.cs.
+                var folderIcon = EditorGUIUtility.IconContent("FolderEmpty Icon");
+                if (GUILayout.Button(folderIcon, GUILayout.Width(36), GUILayout.Height(18)))
                 {
                     var current = ResolvePath(prop.stringValue, absoluteStart, projectRelative);
-                    var picked = projectRelative
-                        ? EditorUtility.OpenFolderPanel("选择 " + label + " 文件夹", current, "")
-                        : EditorUtility.OpenFolderPanel("选择 " + label + " 文件夹", current, "");
+                    var picked = EditorUtility.OpenFolderPanel("选择 " + label + " 文件夹", current, "");
                     if (!string.IsNullOrEmpty(picked))
                     {
                         prop.stringValue = projectRelative
