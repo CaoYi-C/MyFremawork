@@ -84,25 +84,13 @@ namespace PSDImporter.Editor
         public bool IsButton => type == "button";
 
         /// <summary>
-        /// True for any layer that carries image data (image / button /
-        /// input / scroll / slider / toggle / bg / icon / mask / panel /
-        /// progress / item / fx). These all need a PNG written to disk
-        /// and a Unity Image component on the GameObject.
+        /// True for any layer that needs a Unity Image component (image /
+        /// button). Sliced nodes (with _9slice suffix) have HasImage=true
+        /// but empty imageFile — the Image won't reference a Sprite.
         /// </summary>
         public bool HasImage =>
             IsImage
-            || type == "button"
-            || type == "input"
-            || type == "scroll"
-            || type == "slider"
-            || type == "toggle"
-            || type == "bg"
-            || type == "icon"
-            || type == "mask"
-            || type == "panel"
-            || type == "progress"
-            || type == "item"
-            || type == "fx";
+            || type == "button";
         public bool IsText  => type == "text";
         public bool IsGroup => type == "group";
 
@@ -173,7 +161,7 @@ namespace PSDImporter.Editor
         // ─────────────────────────────────────────────────────────────
 
         // group nodes (no UGUI component generated)
-        public static readonly string[] GroupPrefixes = { "anim_", "group_", "root_" };
+        public static readonly string[] GroupPrefixes = { };
 
         // text nodes (UGUI Text)
         public static readonly string[] TextPrefixes  = { "txt_" };
@@ -181,38 +169,22 @@ namespace PSDImporter.Editor
         // button nodes (Image + Button)
         public static readonly string[] ButtonPrefixes = { "btn_" };
 
-        // image nodes (UGUI Image; 8 flavours all collapse to 'image' in v1)
-        public static readonly string[] ImagePrefixes = {
-            "bg_", "fx_", "icon_", "img_", "item_", "mask_", "panel_", "progress_",
-        };
+        // image nodes (UGUI Image)
+        public static readonly string[] ImagePrefixes = { "img_" };
 
-        // composite (v1 partial support — Image only, user wires the
-        // InputField/ScrollRect/Slider/Toggle in Inspector)
+        // export-only — PNG exported, no node in JSON tree
+        public static readonly string[] ExportPrefixes = { "export_" };
+
+        // composite — currently empty; add back when needed.
         public static readonly Dictionary<string, string> CompositePrefixes =
-            new Dictionary<string, string>(StringComparer.Ordinal) {
-            { "input_",  "input"   },
-            { "scroll_", "scroll"  },
-            { "slider_", "slider"  },
-            { "toggle_", "toggle"  },
-        };
+            new Dictionary<string, string>(StringComparer.Ordinal);
 
         // PascalCase prefix used to build C# field names
         public static readonly Dictionary<string, string> VarPrefixByType =
             new Dictionary<string, string>(StringComparer.Ordinal) {
             { "text",     "Txt"      },
             { "button",   "Btn"      },
-            { "input",    "Input"    },
-            { "scroll",   "Scroll"   },
-            { "slider",   "Slider"   },
-            { "toggle",   "Toggle"   },
-            { "bg",       "Bg"       },
-            { "fx",       "Fx"       },
-            { "icon",     "Icon"     },
             { "img",      "Img"      },
-            { "item",     "Item"     },
-            { "mask",     "Mask"     },
-            { "panel",    "Panel"    },
-            { "progress", "Progress" },
         };
 
         /// <summary>
@@ -229,14 +201,67 @@ namespace PSDImporter.Editor
             if (StartsWithAny(lower, TextPrefixes))     return "text";
             if (StartsWithAny(lower, ButtonPrefixes))   return "button";
             if (StartsWithAny(lower, ImagePrefixes))    return "image";
+            if (StartsWithAny(lower, ExportPrefixes))   return "export";
             foreach (var kv in CompositePrefixes)
                 if (lower.StartsWith(kv.Key, StringComparison.Ordinal))
                     return kv.Value;
             return "group";
         }
 
-        public static bool IsComposite(string type) =>
-            type == "input" || type == "scroll" || type == "slider" || type == "toggle";
+        public static bool IsComposite(string type) => false;
+
+        /// <summary>
+        /// Combined list of all recognized prefixes for name parsing.
+        /// </summary>
+        private static string[] _allPrefixes;
+        public static string[] AllPrefixes
+        {
+            get
+            {
+                if (_allPrefixes == null)
+                {
+                    var list = new List<string>();
+                    list.AddRange(GroupPrefixes);
+                    list.AddRange(TextPrefixes);
+                    list.AddRange(ButtonPrefixes);
+                    list.AddRange(ImagePrefixes);
+                    list.AddRange(ExportPrefixes);
+                    list.AddRange(CompositePrefixes.Keys);
+                    _allPrefixes = list.ToArray();
+                }
+                return _allPrefixes;
+            }
+        }
+
+        /// <summary>
+        /// Strip the UGUI prefix AND 9-slice suffix from a layer name,
+        /// returning the logical base name. Mirrors Python's
+        /// `parse_layer_name_for_image`.
+        ///
+        /// e.g. "img_bagBg_9slice_10_10_10_10" → "bagBg"
+        ///      "btn_common_close"             → "common_close"
+        /// </summary>
+        public static string LogicalImageName(string layerName)
+        {
+            if (string.IsNullOrEmpty(layerName)) return "";
+
+            // 1. Strip 9-slice suffix (_9slice or _9slice_L_T_R_B)
+            var sliceMatch = System.Text.RegularExpressions.Regex.Match(
+                layerName, @"^(.*)_9slice(_\d+_\d+_\d+_\d+)?$");
+            string name = sliceMatch.Success ? sliceMatch.Groups[1].Value : layerName;
+
+            // 2. Strip UGUI prefix
+            var lower = name.ToLowerInvariant();
+            foreach (var p in AllPrefixes)
+            {
+                if (lower.StartsWith(p, StringComparison.Ordinal))
+                {
+                    name = name.Substring(p.Length);
+                    break;
+                }
+            }
+            return name;
+        }
 
         /// <summary>
         /// Return the PascalCase prefix used to build a C# field name for the

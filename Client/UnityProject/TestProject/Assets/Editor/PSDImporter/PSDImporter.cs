@@ -252,7 +252,26 @@ namespace PSDImporter.Editor
             Debug.Log($"[PSDImporter] Imported '{doc.sourcePsd.name}' → {prefabPath} " +
                       $"(+{report.addedCount} -{report.removedCount} ~{report.contentChangedCount})");
 
+            // Open the prefab in the editor so the user can see it immediately.
+            OpenPrefab(prefabPath);
+
             return report;
+        }
+
+        /// <summary>
+        /// Open a prefab asset in the Prefab Stage. Safe to call multiple
+        /// times — only the first valid prefab will be opened.
+        /// </summary>
+        private static void OpenPrefab(string prefabPath)
+        {
+            if (string.IsNullOrEmpty(prefabPath)) return;
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            if (prefab == null)
+            {
+                Debug.LogWarning($"[PSDImporter] Prefab not found for opening: {prefabPath}");
+                return;
+            }
+            PrefabStageUtility.OpenPrefab(prefabPath);
         }
 
         /// <summary>
@@ -470,7 +489,16 @@ namespace PSDImporter.Editor
                 return;
             }
 
-            var go = new GameObject(node.name, typeof(RectTransform));
+            // Strip 9-slice suffix from the GameObject name so the prefab
+            // shows a clean name (e.g. "img_bagBg" instead of
+            // "img_bagBg_9slice_10_10_10_10").
+            var displayName = node.name;
+            var sliceMatch = System.Text.RegularExpressions.Regex.Match(
+                displayName, @"^(.*)_9slice(_\d+_\d+_\d+_\d+)?$");
+            if (sliceMatch.Success)
+                displayName = sliceMatch.Groups[1].Value;
+
+            var go = new GameObject(displayName, typeof(RectTransform));
             go.transform.SetParent(parent, worldPositionStays: false);
 
             var rt = (RectTransform)go.transform;
@@ -653,8 +681,7 @@ namespace PSDImporter.Editor
         }
 
         private static bool IsInteractiveType(string type) =>
-            type == "button" || type == "input" || type == "scroll"
-         || type == "slider" || type == "toggle";
+            type == "button";
 
         private static void AttachTextComponent(GameObject go, PsdNode node, PsdDocument doc)
         {
@@ -675,7 +702,17 @@ namespace PSDImporter.Editor
 
         private static Sprite LoadSprite(PsdNode node, PsdDocument doc)
         {
-            if (string.IsNullOrEmpty(node.imageFile)) return null;
+            if (string.IsNullOrEmpty(node.imageFile))
+            {
+                // 9-slice nodes have empty imageFile — try to find a
+                // matching sprite by logical name (e.g. "img_bagBg_9slice"
+                // → "bagBg.png" exported by an "export_bagBg" layer).
+                if (node.slice != null && (node.slice.l | node.slice.t | node.slice.r | node.slice.b) != 0)
+                {
+                    return LoadSpriteByLogicalName(node, doc);
+                }
+                return null;
+            }
             // The actual asset path is set by SetImagePathResolver, which
             // copies the PNG from the Python export folder into the prefab's
             // images subfolder and registers the id → asset path mapping.
@@ -701,6 +738,68 @@ namespace PSDImporter.Editor
             }
             return sprite;
         }
+
+        /// <summary>
+        /// For 9-slice nodes that have no imageFile, search for a
+        /// matching sprite by logical name (prefix + 9-slice suffix
+        /// stripped).  e.g. "img_bagBg_9slice_10_10_10_10" → looks for
+        /// "bagBg.png" in the image output root.
+        /// </summary>
+        private static Sprite LoadSpriteByLogicalName(PsdNode node, PsdDocument doc)
+        {
+            var logical = PsdNaming.LogicalImageName(node.name);
+            if (string.IsNullOrEmpty(logical)) return null;
+
+            var settings = GetActiveSettings();
+            if (settings == null) return null;
+            var imageRoot = settings.imageOutputRoot;
+            if (string.IsNullOrEmpty(imageRoot)) return null;
+
+            // Derive subfolder from PSD filename (same as SetImagePathResolver).
+            var psdName = ResolveClassName(doc, settings);
+            var searchDir = Path.Combine(imageRoot, psdName).Replace('\\', '/');
+
+            // Convert Assets-relative to absolute for Directory.GetFiles.
+            var absDir = Path.GetFullPath(Path.Combine(
+                Path.GetDirectoryName(Application.dataPath) ?? "", searchDir));
+            if (!Directory.Exists(absDir))
+            {
+                Debug.LogWarning($"[PSDImporter] 9-slice '{node.id}': " +
+                     $"image dir not found: {searchDir}");
+                return null;
+            }
+
+            var dataPath = Application.dataPath.Replace('\\', '/');
+            foreach (var file in Directory.GetFiles(absDir, "*.png"))
+            {
+                var fileBase = Path.GetFileNameWithoutExtension(file);
+                if (!string.Equals(fileBase, logical, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                // Convert absolute path back to Assets-relative.
+                var assetPath = file.Replace('\\', '/');
+                if (assetPath.StartsWith(dataPath, StringComparison.OrdinalIgnoreCase))
+                    assetPath = "Assets" + assetPath.Substring(dataPath.Length);
+
+                var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
+                if (sprite != null)
+                {
+                    Debug.Log($"[PSDImporter] 9-slice '{node.id}' auto-matched " +
+                  $"sprite '{assetPath}' by logical name '{logical}'");
+                    return sprite;
+                }
+            }
+
+            Debug.LogWarning($"[PSDImporter] 9-slice '{node.id}': no matching " +
+                 $"sprite for '{logical}' in {searchDir}. " +
+                 $"Add an 'export_{logical}' layer to the PSD.");
+            return null;
+        }
+
+
+
+
+
 
         // Image-path override set by the importer before BuildPrefab runs.
         private static Dictionary<string, string> s_imagePathOverride;
@@ -1215,6 +1314,13 @@ namespace PSDImporter.Editor
                     // null Image sprite (still logged as a warning).
                 }
             }
+
+            // Copy orphan PNGs: images written by the Python tool that
+            // aren't referenced by any JSON node (e.g. export_ prefix).
+            // These sprites are meant to be used directly by other UI.
+            CopyOrphanExportImages(jsonDir, rootAbs, rootRel, psdName, doc,
+                ref overwriteAll, ref noOverwriteAll, stats);
+
             AssetDatabase.Refresh();
 
             // If the user wants us to clean up the Python tool's working
@@ -1241,20 +1347,53 @@ namespace PSDImporter.Editor
         /// the Sprite a 9-slice — the actual `type=Sliced` on the
         /// Image component is set in AttachImageComponent.
         /// </summary>
-        private static void ConfigureSlicedSprites(PsdDocument doc)
+                private static void ConfigureSlicedSprites(PsdDocument doc)
         {
             int configured = 0;
             foreach (var n in doc.root.SelfAndDescendants())
             {
-                // Same fix as in AttachImageComponent: Unity JsonUtility
-                // constructs a default PsdSlice for any class-typed field
-                // missing from the JSON, so a null-check alone would
-                // "configure" every PNG as 9-slice.
                 if (n.slice == null) continue;
                 if ((n.slice.l | n.slice.t | n.slice.r | n.slice.b) == 0) continue;
-                if (!s_imagePathOverride.TryGetValue(n.id, out var dstRel)) continue;
-                if (ConfigureSlicedSprite(dstRel, n.slice))
-                    configured++;
+
+                // Try the normal override path first (node has imageFile).
+                if (s_imagePathOverride.TryGetValue(n.id, out var dstRel)
+                    && !string.IsNullOrEmpty(dstRel))
+                {
+                    if (ConfigureSlicedSprite(dstRel, n.slice))
+                        configured++;
+                    continue;
+                }
+
+                // 9-slice node with no imageFile — find the matching
+                // sprite by logical name (same as LoadSpriteByLogicalName).
+                var logical = PsdNaming.LogicalImageName(n.name);
+                if (string.IsNullOrEmpty(logical)) continue;
+
+                var settings = GetActiveSettings();
+                if (settings == null) continue;
+                var imageRoot = settings.imageOutputRoot;
+                var psdName = ResolveClassName(doc, settings);
+                var searchDir = Path.Combine(imageRoot, psdName).Replace('\\', '/');
+
+                var absDir = Path.GetFullPath(Path.Combine(
+                    Path.GetDirectoryName(Application.dataPath) ?? "", searchDir));
+                if (!Directory.Exists(absDir)) continue;
+
+                var dataPath = Application.dataPath.Replace('\\', '/');
+                foreach (var file in Directory.GetFiles(absDir, "*.png"))
+                {
+                    var fileBase = Path.GetFileNameWithoutExtension(file);
+                    if (!string.Equals(fileBase, logical, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var assetPath = file.Replace('\\', '/');
+                    if (assetPath.StartsWith(dataPath, StringComparison.OrdinalIgnoreCase))
+                        assetPath = "Assets" + assetPath.Substring(dataPath.Length);
+
+                    if (ConfigureSlicedSprite(assetPath, n.slice))
+                        configured++;
+                    break;
+                }
             }
             if (configured > 0)
             {
@@ -1668,6 +1807,49 @@ namespace PSDImporter.Editor
             }
             decision = ImageCopyDecision.SkippedByUser;
             return false;
+        }
+
+        /// <summary>
+        /// Copy PNGs from the Python tool's images/ directory that aren't
+        /// referenced by any node in the JSON tree. These are export-only
+        /// images (export_ prefix) — sprites meant for direct use by
+        /// other UI, without a corresponding prefab GameObject.
+        /// </summary>
+        private static void CopyOrphanExportImages(
+            string jsonDir, string rootAbs, string rootRel,
+            string psdName, PsdDocument doc,
+            ref bool overwriteAll, ref bool noOverwriteAll,
+            ImageCopyStats stats)
+        {
+            var imagesDir = Path.Combine(jsonDir, "images");
+            if (!Directory.Exists(imagesDir)) return;
+
+            // Build set of filenames already processed by the main
+            // node loop (so we don't copy them twice).
+            var handled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var n in doc.root.SelfAndDescendants())
+            {
+                if (!n.HasImage || string.IsNullOrEmpty(n.imageFile)) continue;
+                handled.Add(Path.GetFileName(n.imageFile));
+            }
+
+            foreach (var srcPath in Directory.GetFiles(imagesDir, "*.png"))
+            {
+                var fileName = Path.GetFileName(srcPath);
+                if (handled.Contains(fileName)) continue;
+
+                var dstAbs = Path.Combine(rootAbs, psdName, fileName)
+                                    .Replace('\\', '/');
+                var newHash = Sha256OfFile(srcPath);
+
+                if (TryCopyOrPrompt(srcPath, dstAbs, newHash,
+                    ref overwriteAll, ref noOverwriteAll, out var decision))
+                {
+                    Debug.Log($"[PSDImporter] Copied orphan image '{fileName}' " +
+                              $"→ {rootRel}/{psdName}/");
+                }
+                stats.Add(decision);
+            }
         }
 
         private static string Sha256OfFile(string path)

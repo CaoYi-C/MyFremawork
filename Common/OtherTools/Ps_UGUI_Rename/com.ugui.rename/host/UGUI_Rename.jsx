@@ -10,22 +10,9 @@
 // =====================================================================
 var UGUI_PREFIXES = [
     "btn_",      // Image + Button
-    "txt_",      // UGUI Text
+    "export_",   // PNG only, no node in JSON tree
     "img_",      // UGUI Image (generic decoration)
-    "icon_",     // UGUI Image (icon)
-    "bg_",       // UGUI Image (background)
-    "panel_",    // UGUI Image (panel bg)
-    "scroll_",   // v1 partial: Image only; user adds ScrollRect
-    "input_",    // v1 partial: Image only; user adds InputField
-    "toggle_",   // v1 partial: Image only; user adds Toggle
-    "slider_",   // v1 partial: Image only; user adds Slider
-    "progress_", // UGUI Image (Filled)
-    "mask_",     // UGUI Image + Mask
-    "group_",    // container, no UGUI component
-    "item_",     // list item template
-    "fx_",       // effect / VFX placeholder
-    "anim_",     // animation root, no UGUI component
-    "root_",     // root container, no UGUI component
+    "txt_",      // UGUI Text
 ];
 
 // 测试函数:检查前端能否调用后台

@@ -43,40 +43,28 @@ PSD → Unity UGUI 导入工具。设计师在 Photoshop 里画好 UI，跑个 P
 **用项目自带的 `Ps_UGUI_Rename` PS 插件**（`C:\Users\WWCY\Desktop\Ps_UGUI_Rename`）
 批量加。安装插件后，PS 菜单 `窗口` → `扩展` → `UGUI 图层命名工具`，选中图层点按钮即可。
 
-完整词表（17 个前缀）：
+完整词表：
 
 | 前缀 | UGUI 组件 | 字段名 | 备注 |
 |------|----------|--------|------|
 | `btn_*` | Image + Button | `Btn<Name>` | 接 onClick 在 Window.cs 写 |
-| `txt_*` | Text | `Txt<Name>` | |
 | `img_*` | Image | `Img<Name>` | |
-| `icon_*` | Image | `Icon<Name>` | 通常嵌在 btn 里 |
-| `bg_*` | Image | `Bg<Name>` | 背景 |
-| `panel_*` | Image | `Panel<Name>` | 面板 |
-| `progress_*` | Image (Filled) | `Progress<Name>` | fillAmount 驱动 |
-| `mask_*` | Image + Mask | `Mask<Name>` | |
-| `item_*` | Image | `Item<Name>` | 列表项模板 |
-| `fx_*` | Image | `Fx<Name>` | 特效贴图 |
-| `scroll_*` | Image | `Scroll<Name>` | **v1 部分支持**：ScrollRect 手挂 |
-| `input_*` | Image | `Input<Name>` | **v1 部分支持**：InputField 手挂 |
-| `toggle_*` | Image | `Toggle<Name>` | **v1 部分支持**：Toggle 手挂 |
-| `slider_*` | Image | `Slider<Name>` | **v1 部分支持**：Slider 手挂 |
-| `group_*` / `anim_*` / `root_*` | (无) | - | 容器，不生成绑定 |
+| `txt_*` | Text | `Txt<Name>` | |
+| `export_*` | (无) | - | 仅导出PNG，不产生节点 |
+
+9-slice 后缀：`_9slice_L_T_R_B`（如 `btn_panel_9slice_10_20_10_20`）。带此后缀
+的图层不导出 PNG，仅将结构和 slice 数据写入 JSON，Unity 端创建不挂 Sprite 的 Image。
 
 示例（设计稿）：
 
 ```
 LoginUI
-├── bg_main             ← 背景图
+├── img_bg              ← 背景图
 ├── btn_login           ← 登录按钮（组）
 │   ├── img_normal      ← 按钮底图
 │   └── txt_label       ← 按钮文字
 ├── txt_title           ← 标题文字
-├── icon_heart          ← 红心图标
-└── group_form
-    ├── input_user      ← 用户名输入框
-    ├── input_pass      ← 密码输入框
-    └── toggle_remember ← 记住我开关
+└── img_icon            ← 图标
 ```
 
 未带前缀的图层也会被处理，只是不生成 UIBind 字段。
@@ -177,7 +165,7 @@ PS 里的文字图层在 PSD 里是栅格化的。psd-tools **能**尝试读矢�
 
 - **不支持 PS 图层样式**（阴影/描边/渐变）。建议在 PS 里把效果烘到像素
 - **不支持智能对象**（psd-tools 解出来是个 group）
-- **不支持 9-slice**（生成后手工在 prefab 里配置 `Image.type = Sliced`）
+- **9-slice 节点无 Sprite**（生成后在 Inspector 手动挂 Sprite 并调 border）
 - **不支持动画**（psd-tools 拿不到时间轴信息）
 - **按钮事件不自动接**（Window.cs 里手写）
 
@@ -189,7 +177,7 @@ PS 里的文字图层在 PSD 里是栅格化的。psd-tools **能**尝试读矢�
 | 一键按钮点了没反应 / 报 "psd_to_json.py not found" | 工具默认找 `<ProjectRoot>/Tools/PSDExporter/psd_to_json.py`；不在的话在 Settings 里设 `Python script` |
 | 一键按钮点了报 "Failed to start Python" | `python` 不在 PATH。在 Settings 里把 `Python executable` 改成完整路径，如 `C:\Users\WWCY\AppData\Local\Programs\Python\Python313\python.exe` |
 | Import 后字体变默认 | PS 字体名没拿到，或 `fontSearchRoot` 下没找到；检查 Settings |
-| UIBind 字段全空 | 图层名没遵守 17 个前缀（见 PREFIXES.md）；Python 端会输出 warning |
+| UIBind 字段全空 | 图层名没遵守前缀（见 PREFIXES.md）；Python 端会输出 warning |
 | "Generated type not found" 警告 | 第一次 Import 触发了代码生成，Unity 正在编译；编译完后点 prefab 的 Inspector "Bind" 按钮，或在窗口里重 Import 一次（**当前 v1 默认不生成 UIBind**，需要时在窗口顶部勾选） |
 | Prefab 位置错乱 | 设计师在 PS 里把图层放进不同 group 了，路径变了；检查层级 |
 | 按钮点击没反应 | Importer 只挂 Button 组件，不接事件；编辑 `LoginUIWindow.cs` 加 `Nodes.BtnLogin.onClick.AddListener(...)` |
@@ -202,9 +190,9 @@ PS 里的文字图层在 PSD 里是栅格化的。psd-tools **能**尝试读矢�
 | `Tools/PSDExporter/psd_exporter/exporter.py` | 核心导出逻辑 |
 | `Tools/PSDExporter/psd_exporter/hashing.py` | hash 工具 |
 | `Tools/PSDExporter/SCHEMA.md` | JSON 契约 |
-| `Tools/PSDExporter/PREFIXES.md` | 17 前缀词表（与 PS 插件同步） |
+| `Tools/PSDExporter/PREFIXES.md` | 前缀词表（与 PS 插件同步） |
 | `Tools/PSDExporter/tests/test_exporter.py` | Python 端单测 |
-| `Assets/Editor/PSDImporter/PSDNode.cs` | C# 数据模型 + 17 前缀镜像 |
+| `Assets/Editor/PSDImporter/PSDNode.cs` | C# 数据模型 + 前缀镜像 |
 | `Assets/Editor/PSDImporter/IncrementalTracker.cs` | hash 缓存 + diff |
 | `Assets/Editor/PSDImporter/PSDImporter.cs` | 核心导入逻辑（带 generateUIBind 重载） |
 | `Assets/Editor/PSDImporter/PSDImporterWindow.cs` | Editor 窗口（带一键按钮） |

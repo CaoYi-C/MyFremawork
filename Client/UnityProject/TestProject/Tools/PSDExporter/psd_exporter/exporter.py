@@ -68,7 +68,7 @@ SCHEMA_VERSION = 1
 # ─────────────────────────────────────────────────────────────────────
 
 # Group nodes (no UGUI component generated)
-GROUP_PREFIXES = ("anim_", "group_", "root_")
+GROUP_PREFIXES = ()
 
 # Text nodes (UGUI Text)
 TEXT_PREFIXES = ("txt_",)
@@ -76,26 +76,15 @@ TEXT_PREFIXES = ("txt_",)
 # Button nodes (Image + Button)
 BUTTON_PREFIXES = ("btn_",)
 
-# Image nodes (UGUI Image; some have additional v1 caveats — see PREFIXES.md)
-IMAGE_PREFIXES = (
-    "bg_",      # background, typically stretched
-    "fx_",      # effect / VFX placeholder
-    "icon_",    # icon, usually inside a btn_
-    "img_",     # generic decoration
-    "item_",    # list item template
-    "mask_",    # mask
-    "panel_",   # panel background
-    "progress_",  # progress fill
-)
+# Image nodes (UGUI Image)
+IMAGE_PREFIXES = ("img_",)
 
-# v1 partial-support composites — we generate the Image but the user
-# has to wire the actual component in Unity Inspector.
-COMPOSITE_PREFIXES = {
-    "input_":   "input",     # → Image + InputField
-    "scroll_":  "scroll",    # → Image + ScrollRect
-    "slider_":  "slider",    # → Image + Slider
-    "toggle_":  "toggle",    # → Image + Toggle
-}
+# Export-only — write PNG but create NO node in the JSON tree.
+# Used when other UI elements reference the sprite directly.
+EXPORT_ONLY_PREFIXES = ("export_",)
+
+# v1 partial-support composites — currently empty; add back when needed.
+COMPOSITE_PREFIXES = {}
 
 # All prefixes in one place for fast lookup
 ALL_PREFIXES = (
@@ -103,6 +92,7 @@ ALL_PREFIXES = (
     + TEXT_PREFIXES
     + BUTTON_PREFIXES
     + IMAGE_PREFIXES
+    + EXPORT_ONLY_PREFIXES
     + tuple(COMPOSITE_PREFIXES.keys())
 )
 
@@ -111,18 +101,8 @@ ALL_PREFIXES = (
 VAR_PREFIX_BY_TYPE = {
     "text":     "Txt",
     "button":   "Btn",
-    "input":    "Input",
-    "scroll":   "Scroll",
-    "slider":   "Slider",
-    "toggle":   "Toggle",
-    "bg":       "Bg",
-    "fx":       "Fx",
-    "icon":     "Icon",
     "img":      "Img",
-    "item":     "Item",
-    "mask":     "Mask",
-    "panel":    "Panel",
-    "progress": "Progress",
+    "export":   None,   # export-only: no field generated
 }
 
 
@@ -135,10 +115,7 @@ def classify_layer_name(name: str) -> str:
       'text'      — UGUI Text
       'button'    — Image + Button
       'image'     — UGUI Image (most common)
-      'input'     — Image only; user must add InputField
-      'scroll'    — Image only; user must add ScrollRect
-      'slider'    — Image only; user must add Slider
-      'toggle'    — Image only; user must add Toggle
+      'export'    — PNG only, no node in tree
 
     The C# side mirrors this list (see `PSDImporter.PsdNaming`).
     """
@@ -151,9 +128,9 @@ def classify_layer_name(name: str) -> str:
         return "button"
     if any(lower.startswith(p) for p in IMAGE_PREFIXES):
         return "image"
+    if any(lower.startswith(p) for p in EXPORT_ONLY_PREFIXES):
+        return "export"
     if any(lower.startswith(p) for p in COMPOSITE_PREFIXES):
-        # Return the composite type name (not 'composite'), so the C# side
-        # knows it's a partial-support case and can warn.
         for p, t in COMPOSITE_PREFIXES.items():
             if lower.startswith(p):
                 return t
@@ -188,6 +165,8 @@ def sanitize_variable_name(name: str) -> str:
     # First: try the known-prefix replacement. We match lowercase prefixes.
     lower = name.lower()
     for p, canonical in VAR_PREFIX_BY_TYPE.items():
+        if canonical is None:
+            continue   # export_ type has no field name
         if lower.startswith(p + "_"):
             base = name[len(p) + 1:]   # strip "btn_" → "close"
             return canonical + _pascalize(base)
@@ -384,7 +363,7 @@ class PsdExporter:
     ) -> None:
         """
         :param marked_only: If True (default), only layers whose name starts
-            with one of the 17 UGUI prefixes (see PREFIXES.md) are exported.
+            with one of the UGUI prefixes (see PREFIXES.md) are exported.
             Their ancestor groups are kept as containers. Unmarked layers
             (decoration, guides, layout helpers) are dropped. Set False to
             export the whole tree.
@@ -494,7 +473,7 @@ class PsdExporter:
         is responsible for filtering out Nones from its children list.
 
         `marked_only` mode rules:
-          - A layer is "marked" iff its name starts with one of the 17
+          - A layer is "marked" iff its name starts with one of the
             UGUI prefixes (see PREFIXES.md / ALL_PREFIXES in this file).
           - Keep a layer if it is itself marked.
           - Keep a group if any of its descendants is marked (so we
@@ -538,6 +517,23 @@ class PsdExporter:
 
         layer_kind = _detect_kind(layer)
         is_marked = kind != "group"   # anything that classifies as image/text/button/etc.
+
+        # export-only: write PNG, no node in JSON tree.
+        # Must be checked BEFORE group/text branches — export_ layers
+        # can be any layer kind (group, pixel, text).
+        if kind == "export":
+            pil = self._try_composite_with_fallback(layer, ctx, node_id)
+            if pil is not None and pil.size != (0, 0):
+                logical_name, _, _ = parse_layer_name_for_image(layer.name)
+                png_bytes = self._encode_png(pil)
+                img_hash = sha256_bytes(png_bytes)
+                png_path = ctx.write_image(logical_name, png_bytes, img_hash)
+                LOG.info("export-only '%s' → %s (%dx%d, %.1f KB)",
+                    node_id, png_path.name, pil.width, pil.height,
+                    len(png_bytes) / 1024)
+            else:
+                LOG.warning("export-only '%s': composite returned empty image", node_id)
+            return None
 
         if layer_kind == "group":
             # Recurse into children first so we know which to keep.
@@ -598,7 +594,7 @@ class PsdExporter:
             ctx.record(node)
             return node
 
-        # image / button / input / scroll / slider / toggle path
+        # image / button path
         pil = self._try_composite_with_fallback(layer, ctx, node_id)
         if pil is None or pil.size == (0, 0):
             # Couldn't get an image. In marked_only mode, drop it — the
@@ -657,9 +653,30 @@ class PsdExporter:
         logical_name, original_name, slice_meta = parse_layer_name_for_image(
             layer.name)
 
-        png_bytes = self._encode_png(pil)
-        img_hash = sha256_bytes(png_bytes)
-        img_file = ctx.write_image(logical_name, png_bytes, img_hash)
+        if slice_meta is not None:
+            # 9-slice node: NO image export. The Unity side creates an
+            # Image component WITHOUT a sprite reference — the designer
+            # sets the 9-slice borders in the Inspector.  Use a stable
+            # hash derived from slice values + rect for incremental tracking.
+            img_hash = composite_hash([
+                f"s:{slice_meta['l']}_{slice_meta['t']}_{slice_meta['r']}_{slice_meta['b']}",
+                f"r:{rect['x']}_{rect['y']}_{rect['w']}_{rect['h']}",
+            ])
+            img_file = ""
+            img_transparent = False
+            LOG.info(
+                "9-slice '%s' → no PNG (structure-only, borders L=%d T=%d R=%d B=%d)",
+                node_id,
+                slice_meta["l"], slice_meta["t"],
+                slice_meta["r"], slice_meta["b"],
+            )
+        else:
+            png_bytes = self._encode_png(pil)
+            img_hash = sha256_bytes(png_bytes)
+            img_file_obj = ctx.write_image(logical_name, png_bytes, img_hash)
+            img_file = str(Path(self.image_subdir) / img_file_obj.name)
+            img_transparent = _has_alpha(pil)
+
         is_composite = kind in COMPOSITE_PREFIXES.values()
         node = ExportNode(
             id=node_id,
@@ -673,8 +690,8 @@ class PsdExporter:
             rect=rect,
             pivot=pivot,
             image_hash=img_hash,
-            image_file=str(Path(self.image_subdir) / img_file.name),
-            image_transparent=_has_alpha(pil),
+            image_file=img_file,
+            image_transparent=img_transparent,
             slice=slice_meta,
             is_composite=is_composite,
         )
@@ -682,13 +699,6 @@ class PsdExporter:
             ctx.warn(
                 f"Composite '{node_id}': tool only creates the Image. "
                 f"Manually add the {kind.title()} component in Unity Inspector."
-            )
-        if slice_meta is not None:
-            LOG.info(
-                "9-slice '%s' → %s.png (borders L=%d T=%d R=%d B=%d)",
-                node_id, logical_name,
-                slice_meta["l"], slice_meta["t"],
-                slice_meta["r"], slice_meta["b"],
             )
         ctx.record(node)
         return node

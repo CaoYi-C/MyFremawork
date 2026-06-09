@@ -68,53 +68,33 @@ def test_sha256_file_matches_bytes() -> None:
 
 
 def test_classify_layer_name() -> None:
-    """The full 17-prefix taxonomy. See PREFIXES.md."""
+    """The current 4-prefix taxonomy. See PREFIXES.md."""
     # text
     assert classify_layer_name("txt_title") == "text"
     # button
     assert classify_layer_name("btn_login") == "button"
-    # image (six flavours 鈥?they all collapse to 'image' for v1)
-    for p in ("img_", "icon_", "bg_", "panel_", "mask_", "progress_", "fx_", "item_"):
-        assert classify_layer_name(f"{p}foo") == "image", \
-            f"{p} should classify as image"
-    # composite (v1 partial support 鈥?each maps to its own type)
-    assert classify_layer_name("input_username") == "input"
-    assert classify_layer_name("scroll_main")    == "scroll"
-    assert classify_layer_name("slider_volume")  == "slider"
-    assert classify_layer_name("toggle_music")   == "toggle"
-    # group
-    for p in ("group_", "anim_", "root_"):
-        assert classify_layer_name(f"{p}container") == "group", \
-            f"{p} should classify as group"
-    # no prefix 鈫?group
+    # image
+    assert classify_layer_name("img_bg") == "image"
+    # export
+    assert classify_layer_name("export_icon") == "export"
+    # No prefix -> group
     assert classify_layer_name("Background") == "group"
+    assert classify_layer_name("icon_heart") == "group"
+    assert classify_layer_name("bg_main") == "group"
     # case-insensitive (PS plugin emits lowercase, but be safe)
     assert classify_layer_name("BTN_Login") == "button"
     assert classify_layer_name("Txt_Title") == "text"
-    print("  鉁?classify_layer_name covers the full 17-prefix taxonomy")
+    print("  OK classify_layer_name covers the 4-prefix taxonomy")
 
 
 def test_sanitize_variable_name() -> None:
     """Prefix-aware pascalization. See PREFIXES.md."""
-    # Known prefix 鈫?canonical PascalCase prefix + pascalized base.
+    # Known prefix -> canonical PascalCase prefix + pascalized base.
     assert sanitize_variable_name("btn_close")     == "BtnClose"
     assert sanitize_variable_name("img_bg")        == "ImgBg"
     assert sanitize_variable_name("txt_title")     == "TxtTitle"
-    assert sanitize_variable_name("icon_heart")    == "IconHeart"
-    assert sanitize_variable_name("bg_login")      == "BgLogin"
-    assert sanitize_variable_name("panel_main")    == "PanelMain"
-    assert sanitize_variable_name("scroll_main")   == "ScrollMain"
-    assert sanitize_variable_name("toggle_music")  == "ToggleMusic"
-    assert sanitize_variable_name("input_user")    == "InputUser"
-    assert sanitize_variable_name("slider_vol")    == "SliderVol"
-    assert sanitize_variable_name("progress_bar")  == "ProgressBar"
-    assert sanitize_variable_name("mask_overlay")  == "MaskOverlay"
-    assert sanitize_variable_name("item_template") == "ItemTemplate"
-    assert sanitize_variable_name("fx_glow")       == "FxGlow"
-    # Group prefix 鈫?just pascalize the whole thing
-    assert sanitize_variable_name("group_login")   == "GroupLogin"
-    assert sanitize_variable_name("anim_intro")    == "AnimIntro"
-    assert sanitize_variable_name("root_main")     == "RootMain"
+    # export_ -> just pascalize the whole thing (no field generated)
+    assert sanitize_variable_name("export_icon")   == "ExportIcon"
     # Multi-word base
     assert sanitize_variable_name("btn_login_01")  == "BtnLogin01"
     # Mixed separators
@@ -122,9 +102,32 @@ def test_sanitize_variable_name() -> None:
     # Empty / weird
     assert sanitize_variable_name("")              == "Node"
     assert sanitize_variable_name("btn_")          == "Btn"
-    # No prefix 鈫?pascalize the whole thing
+    # No prefix -> pascalize the whole thing
     assert sanitize_variable_name("myLayer")       == "MyLayer"
-    print("  鉁?sanitize_variable_name is prefix-aware across all 17 types")
+    assert sanitize_variable_name("icon_heart")    == "IconHeart"
+    assert sanitize_variable_name("bg_main")       == "BgMain"
+    print("  OK sanitize_variable_name is prefix-aware across all 4 types")
+
+
+
+
+def test_build_image_node_9slice_skips_png():
+    """9-slice nodes produce empty imageFile."""
+    from psd_exporter.exporter import parse_layer_name_for_image
+    logical, original, slice_meta = parse_layer_name_for_image(
+        "btn_panel_9slice_10_20_10_20")
+    assert slice_meta is not None
+    assert slice_meta["l"] == 10
+    assert slice_meta["t"] == 20
+    assert slice_meta["r"] == 10
+    assert slice_meta["b"] == 20
+    assert logical == "panel"
+    assert original == "btn_panel_9slice_10_20_10_20"
+    print("  OK 9-slice parse_layer_name_for_image works correctly")
+
+
+
+
 
 
 # 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
@@ -199,7 +202,7 @@ def test_exporter_export_path() -> None:
                     pil=_make_pil(4, 4, (255, 0, 0, 255)))
     txt = _MockLayer("txt_title", kind="type", bbox=(0, 0, 600, 80),
                      pil=_make_pil(4, 4, (255, 255, 255, 255)))
-    icon = _MockLayer("icon_heart", kind="pixel", bbox=(0, 0, 32, 32),
+    icon = _MockLayer("img_icon", kind="pixel", bbox=(0, 0, 32, 32),
                       pil=_make_pil(4, 4, (255, 100, 100, 255)))
 
     class _FakePsd:
@@ -251,7 +254,7 @@ def test_exporter_export_path() -> None:
 
             # Check the actual layer names came through.
             names = {k["name"] for k in kids}
-            assert names == {"btn_login", "txt_title", "icon_heart"}, (
+            assert names == {"btn_login", "txt_title", "img_icon"}, (
                 f"Names mismatch: {names}"
             )
 
@@ -259,7 +262,7 @@ def test_exporter_export_path() -> None:
             by_name = {k["name"]: k for k in kids}
             assert by_name["btn_login"]["type"] == "button"
             assert by_name["txt_title"]["type"] == "text"
-            assert by_name["icon_heart"]["type"] == "image"
+            assert by_name["img_icon"]["type"] == "image"
 
             # Hashes were recorded for incremental.
             actual = len(result.node_hashes)

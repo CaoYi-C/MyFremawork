@@ -59,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "Export the full layer tree (no filter). "
             "Default is to export only layers whose name starts with one "
-            "of the 17 UGUI prefixes — see PREFIXES.md."
+            "of the UGUI prefixes — see PREFIXES.md."
         ),
     )
     args = parser.parse_args(argv)

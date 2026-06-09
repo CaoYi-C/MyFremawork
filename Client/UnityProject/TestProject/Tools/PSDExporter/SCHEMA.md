@@ -67,40 +67,23 @@
 |------|------|------|
 | `children` | array\<Node\> | 嵌套子节点 |
 
-### 图像类节点（`type` ∈ `image` / `button` / `input` / `scroll` / `slider` / `toggle` / `bg` / `icon` / `mask` / `panel` / `progress` / `item` / `fx` / `raw`）
+### 图像类节点（`type` ∈ `image` / `button`）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `imageHash` | string | 像素数据 sha256（增量判断用） |
-| `imageFile` | string | 相对 `outputRoot` 的 PNG 路径 |
+| `imageHash` | string | 像素/切片 hash（增量判断用） |
+| `imageFile` | string | 相对 `outputRoot` 的 PNG 路径。**9-slice 节点此字段为空字符串** |
 | `imageTransparent` | bool | 是否含 alpha 通道 |
-| `isComposite` | bool | v1 复合组件（`input`/`scroll`/`slider`/`toggle`）为 true。导入器只创建 Image，业务组件需手动挂 |
+| `slice` | object | 9-slice 边框 `{l, t, r, b}`（像素）。仅 9-slice 节点有值，否则字段不存在 |
 
 ## 前缀词表（与 PS 插件/Python/C# 三边同步）
 
-| 前缀 | `type` | UGUI 组件 | 字段名 |
-|------|--------|----------|--------|
-| `txt_` | `text` | Text | `TxtXxx` |
-| `btn_` | `button` | Image + Button | `BtnXxx` |
-| `img_` | `image` | Image | `ImgXxx` |
-| `icon_` | `image` | Image | `IconXxx` |
-| `bg_` | `image` | Image (背景) | `BgXxx` |
-| `panel_` | `image` | Image (面板) | `PanelXxx` |
-| `progress_` | `image` | Image (Filled) | `ProgressXxx` |
-| `mask_` | `image` | Image + Mask | `MaskXxx` |
-| `item_` | `image` | Image (列表项模板) | `ItemXxx` |
-| `fx_` | `image` | Image (特效) | `FxXxx` |
-| `scroll_` | `scroll` | Image + ScrollRect (v1 部分支持) | `ScrollXxx` |
-| `input_` | `input` | Image + InputField (v1 部分支持) | `InputXxx` |
-| `slider_` | `slider` | Image + Slider (v1 部分支持) | `SliderXxx` |
-| `toggle_` | `toggle` | Image + Toggle (v1 部分支持) | `ToggleXxx` |
-| `group_` | `group` | (无) | - |
-| `anim_` | `group` | (无) | - |
-| `root_` | `group` | (无) | - |
-
-**v1 部分支持** 的类型（`input` / `scroll` / `slider` / `toggle`）：Python 端会把
-节点标 `isComposite: true`，C# 端创建 Image 组件并输出 warning，业务组件
-（InputField / ScrollRect / Slider / Toggle）需在 Unity Inspector 手动挂上。
+| 前缀 | `type` | UGUI 组件 | 字段名 | 备注 |
+|------|--------|----------|--------|------|
+| `btn_` | `button` | Image + Button | `BtnXxx` | |
+| `export_` | `export` | (无) | - | **仅导出PNG，不产生JSON节点** |
+| `img_` | `image` | Image | `ImgXxx` | |
+| `txt_` | `text` | Text | `TxtXxx` | |
 
 ## 增量更新协议
 
@@ -137,24 +120,14 @@ Unity 端在 `Assets/PSDImport/<PsdName>/_cache.json` 维护上一轮的状态�
 | 图层名前缀 | UGUI 组件 | UIBind 字段名 |
 |------|------|------|
 | `btn_*` | Image + Button | `Btn<Name>` |
-| `txt_*` | Text | `Txt<Name>` |
 | `img_*` | Image | `Img<Name>` |
-| `icon_*` | Image | `Icon<Name>` |
-| `bg_*` | Image | `Bg<Name>` |
-| `panel_*` | Image | `Panel<Name>` |
-| `progress_*` | Image (Filled) | `Progress<Name>` |
-| `scroll_*` | Image (v1 部分支持) | `Scroll<Name>` |
-| `input_*` | Image (v1 部分支持) | `Input<Name>` |
-| `toggle_*` | Image (v1 部分支持) | `Toggle<Name>` |
-| `slider_*` | Image (v1 部分支持) | `Slider<Name>` |
-| `group_*` / `anim_*` / `root_*` | (无) | - |
+| `txt_*` | Text | `Txt<Name>` |
 
 > 所有前缀**小写**。PS 插件 (`com.ugui.rename`) 自动给图层加这些前缀。
 
 示例 PSD 图层名：
 - `btn_login` → 字段 `BtnLogin`（同时创建 Image + Button）
 - `txt_title` → 字段 `TxtTitle`
-- `toggle_music` → 字段 `ToggleMusic`（仅 Image，业务 Toggle 手挂）
-- `group_login` → 容器，不生成绑定
+- `img_bg` → 字段 `ImgBg`
 
 未带前缀的图层（设计师没遵守）也会被处理，只是不生成 UIBind 字段。工具会输出警告。
