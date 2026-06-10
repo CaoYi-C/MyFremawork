@@ -498,6 +498,12 @@ namespace PSDImporter.Editor
             if (sliceMatch.Success)
                 displayName = sliceMatch.Groups[1].Value;
 
+            // Strip font tag suffix (e.g. "txt_title_H1" → "txt_title").
+            var fontTag = PsdNaming.FontTagFor(displayName);
+            if (fontTag != null)
+                displayName = displayName.Substring(0,
+                    displayName.Length - fontTag.Length - 1);
+
             var go = new GameObject(displayName, typeof(RectTransform));
             go.transform.SetParent(parent, worldPositionStays: false);
 
@@ -687,13 +693,23 @@ namespace PSDImporter.Editor
         {
             var text = go.AddComponent<Text>();
             text.text     = node.text?.content ?? "";
-            text.font     = ResolveFont(node.text, doc);
+
+            // Try font-mapping by tag suffix first (e.g. "txt_title_SansCN-Bold")
+            var fontTag = PsdNaming.FontTagFor(node.name);
+            var mappedFont = fontTag != null ? ResolveFontByTag(fontTag) : null;
+            text.font     = mappedFont ?? ResolveFont(node.text, doc);
+
             text.fontSize = (node.text != null && node.text.fontSize > 0) ? Mathf.RoundToInt(node.text.fontSize) : 24;
             text.color    = ParseColor(node.text?.color);
             text.alignment = ParseAnchor(node.text?.alignment);
             text.horizontalOverflow = HorizontalWrapMode.Overflow;
             text.verticalOverflow   = VerticalWrapMode.Overflow;
             text.raycastTarget = false;
+
+            if (mappedFont != null)
+            {
+                Debug.Log($"[PSDImporter] '{node.id}' font tag '{fontTag}' → {mappedFont.name}");
+            }
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -807,6 +823,21 @@ namespace PSDImporter.Editor
         private static string GetImagePathOverride(PsdNode node)
         {
             return s_imagePathOverride != null && s_imagePathOverride.TryGetValue(node.id, out var p) ? p : null;
+        }
+
+        // ─── font-mapping (tag → Font, from Settings) ──────────────
+
+        private static Font ResolveFontByTag(string tag)
+        {
+            var settings = GetActiveSettings();
+            if (settings?.fontTagMappings == null) return null;
+            foreach (var entry in settings.fontTagMappings)
+            {
+                if (string.Equals(entry.tag, tag, StringComparison.OrdinalIgnoreCase)
+                    && entry.font != null)
+                    return entry.font;
+            }
+            return null;
         }
 
         private static Font ResolveFont(PsdText text, PsdDocument doc)

@@ -330,3 +330,78 @@ function restoreSelectionByIds(ids) {
         selectLayerById(ids[i], true);
     }
 }
+
+// =====================================================================
+//  字体后缀标记
+//  给选中的 txt_ 图层追加/移除字体后缀。
+//  格式: txt_basename_FontTag  (例如 txt_title_SansCN-Bold)
+//
+//  params.mode: "apply" (设置/替换后缀) | "remove" (清除后缀)
+//  params.tag:  字体 tag，如 "SansCN-Bold"
+//
+//  - apply 时先移除已有后缀，再追加新后缀
+//  - remove 时只移除后缀
+//  - 只处理以 txt_ 开头的图层（忽略其他前缀）
+// =====================================================================
+function markFontSelected(params) {
+    if (!app.documents.length) {
+        return "错误:请先打开一个 PSD 文档。";
+    }
+    var mode = params.mode || "apply";
+    var tag = params.tag || "";
+
+    var doc = app.activeDocument;
+    var selectedIds = getSelectedLayerIds();
+    if (!selectedIds || selectedIds.length === 0) {
+        return "错误:请先选择一个或多个图层。";
+    }
+
+    var count = 0;
+    var skipped = 0;
+    try {
+        for (var i = 0; i < selectedIds.length; i++) {
+            selectLayerById(selectedIds[i], false);
+            var layer = doc.activeLayer;
+            var name = layer.name;
+            var lower = trim(name).toLowerCase();
+
+            // 只处理 txt_ 前缀的图层
+            if (lower.indexOf("txt_") !== 0) {
+                skipped++;
+                continue;
+            }
+
+            // 移除已有字体后缀：图层名末尾的 _FontTag
+            // 字体后缀格式: 最后一个 _ 后面是 tag（但排除 _9slice 后缀）
+            // 策略: 先剥离 _9slice 相关后缀, 然后剥离最后一个 _xxx tag
+            var cleanName = name;
+            // 1. 剥离 _9slice 及 _9slice_L_T_R_B
+            cleanName = cleanName.replace(/_9slice(_\d+_\d+_\d+_\d+)?$/, "");
+            // 2. 剥离已有的字体 tag（最后一个 _xxx，不是数字也不是 9slice）
+            //    字体 tag 通常包含字母和连字符
+            var lastUnderscore = cleanName.lastIndexOf("_");
+            if (lastUnderscore > 4) {  // 确保 txt_x 之后还有内容
+                var suffix = cleanName.substring(lastUnderscore + 1);
+                // 如果是纯数字（如 01）则保留
+                if (!/^\d+$/.test(suffix)) {
+                    cleanName = cleanName.substring(0, lastUnderscore);
+                }
+            }
+
+            if (mode === "apply" && tag !== "") {
+                layer.name = cleanName + "_" + tag;
+            } else {
+                layer.name = cleanName;
+            }
+            count++;
+        }
+        restoreSelectionByIds(selectedIds);
+        if (skipped > 0) {
+            return "完成:已处理 " + count + " 个图层 (跳过 " + skipped + " 个非 txt_ 图层)";
+        }
+        return "完成:已处理 " + count + " 个图层";
+    } catch (e) {
+        try { restoreSelectionByIds(selectedIds); } catch (er) {}
+        return "重命名失败:\n" + e.message;
+    }
+}

@@ -23,4 +23,7 @@ MonoBehaviour:
   defaultLayer: 1
   fallbackFont: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
   fontSearchRoot: Assets
+  fontTagMappings:
+  - tag: H1
+    font: {fileID: 12800000, guid: b66083461f56a764db25e05a303e6c7f, type: 3}
   cacheFileName: _psd_cache.json

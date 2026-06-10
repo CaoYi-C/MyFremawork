@@ -3,6 +3,8 @@
 // Lives at Assets/Editor/PSDImporter/Resources/PSDImporterSettings.asset
 // (or any user-chosen path) and is loaded on demand.
 
+using System;
+using System.Collections.Generic;
 using System.IO;
 using Manager.UIManager;
 using UnityEngine;
@@ -74,6 +76,12 @@ namespace PSDImporter.Editor
                  "extension). If not found, fallbackFont is used.")]
         public string fontSearchRoot = "Assets";
 
+        [Tooltip("Font tag → Font asset. When a txt_ layer has a font " +
+                 "suffix (e.g. txt_title_H1), the importer looks up 'H1' " +
+                 "here and assigns the matching font. If no suffix or not " +
+                 "found, fallbackFont is used.")]
+        public List<FontTagEntry> fontTagMappings = new List<FontTagEntry>();
+
         [Header("Incremental")]
         [Tooltip("Per-PSD cache filename. Sits next to the JSON in the export " +
                  "folder. Stores hash + node-hash map for incremental rebuild.")]
@@ -104,5 +112,14 @@ namespace PSDImporter.Editor
             var candidate = Path.Combine(projectRoot, "Tools", "PSDExporter", "psd_to_json.py");
             return File.Exists(candidate) ? candidate : null;
         }
+    }
+
+    [Serializable]
+    public class FontTagEntry
+    {
+        [Tooltip("Short tag appended to txt_ layer names, e.g. 'H1' in txt_title_H1")]
+        public string tag;
+        [Tooltip("Font asset assigned when the tag matches")]
+        public Font font;
     }
 }

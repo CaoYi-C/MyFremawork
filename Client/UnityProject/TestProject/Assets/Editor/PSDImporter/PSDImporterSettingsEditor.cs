@@ -40,6 +40,7 @@ namespace PSDImporter.Editor
         private SerializedProperty _defaultLayer;
         private SerializedProperty _fallbackFont;
         private SerializedProperty _fontSearchRoot;
+        private SerializedProperty _fontTagMappings;
         private SerializedProperty _cacheFileName;
 
         private void OnEnable()
@@ -55,6 +56,7 @@ namespace PSDImporter.Editor
             _defaultLayer               = serializedObject.FindProperty("defaultLayer");
             _fallbackFont               = serializedObject.FindProperty("fallbackFont");
             _fontSearchRoot             = serializedObject.FindProperty("fontSearchRoot");
+            _fontTagMappings            = serializedObject.FindProperty("fontTagMappings");
             _cacheFileName              = serializedObject.FindProperty("cacheFileName");
         }
 
@@ -155,12 +157,18 @@ namespace PSDImporter.Editor
             EditorGUILayout.LabelField("字体", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(_fallbackFont,
                 new GUIContent("备用字体",
-                    "PSD 文本里的字体名解析不到时,就用这个。" +
-                    "放到 Assets/Resources/ 下,让 YooAsset 打包能找到。"));
+                    "PSD 文本里的字体名解析不到时,就用这个。"));
             DrawFolderField(_fontSearchRoot,
                 "字体搜索根 (Assets/)",
                 "PSD 文本里的字体名按文件名(无后缀)在 Assets/ 下找。",
                 absoluteStart: "Assets", projectRelative: true);
+
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("字体后缀映射", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(_fontTagMappings,
+                new GUIContent("Tag → Font",
+                    "PSD 中 txt_xxx_H1 的 H1 后缀匹配哪个 Font。未匹配到或图层无后缀时走备用字体。"),
+                true);
         }
 
         private void DrawIncrementalSection()

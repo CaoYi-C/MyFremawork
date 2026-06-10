@@ -264,6 +264,38 @@ namespace PSDImporter.Editor
         }
 
         /// <summary>
+        /// Extract the font tag suffix from a layer name.
+        /// e.g. "txt_title_SansCN-Bold" → "SansCN-Bold"
+        ///      "txt_title"            → null
+        /// Strips txt_ prefix and _9slice suffix first, then takes
+        /// the last _xxx segment as the font tag (skips numeric segments).
+        /// </summary>
+        public static string FontTagFor(string layerName)
+        {
+            if (string.IsNullOrEmpty(layerName)) return null;
+            var lower = layerName.ToLowerInvariant();
+            if (!lower.StartsWith("txt_", StringComparison.Ordinal)) return null;
+
+            // Strip txt_ prefix
+            var rest = layerName.Substring(4);
+
+            // Strip _9slice suffix
+            var sliceMatch = System.Text.RegularExpressions.Regex.Match(
+                rest, @"^(.*)_9slice(_\d+_\d+_\d+_\d+)?$");
+            if (sliceMatch.Success)
+                rest = sliceMatch.Groups[1].Value;
+
+            // The last _xxx segment is the font tag (if not numeric)
+            var lastUnderscore = rest.LastIndexOf('_');
+            if (lastUnderscore < 0) return null;
+            var tag = rest.Substring(lastUnderscore + 1);
+            // If it's purely numeric (like "01"), it's not a font tag
+            if (tag.Length > 0 && !int.TryParse(tag, out _))
+                return tag;
+            return null;
+        }
+
+        /// <summary>
         /// Return the PascalCase prefix used to build a C# field name for the
         /// given layer name. Groups return null.
         /// </summary>

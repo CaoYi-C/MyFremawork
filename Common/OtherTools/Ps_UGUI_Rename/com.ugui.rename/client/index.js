@@ -118,3 +118,59 @@ function callRename(prefix) {
     }
   });
 }
+
+// ──────────────────────────────────────────────────────────────────
+//  字体标记面板
+//  从 font_mapping.js 的 FONT_MAPPING 数组读取字体列表
+// ──────────────────────────────────────────────────────────────────
+var fontTagGrid = document.getElementById('fontTagGrid');
+var customFontTagInput = document.getElementById('customFontTag');
+var applyCustomFontTagBtn = document.getElementById('applyCustomFontTag');
+var removeFontTagBtn = document.getElementById('removeFontTag');
+
+(function initFontPanel() {
+  var fonts = (typeof FONT_MAPPING !== 'undefined') ? FONT_MAPPING : [];
+  if (!fonts || fonts.length === 0) {
+    fontTagGrid.innerHTML = '<button disabled>无字体</button>';
+    return;
+  }
+  for (var i = 0; i < fonts.length; i++) {
+    var item = fonts[i];
+    var btn = document.createElement('button');
+    btn.textContent = item.label;
+    btn.addEventListener('click', (function(tag) {
+      return function() { callFontTag(tag); };
+    })(item.tag));
+    fontTagGrid.appendChild(btn);
+  }
+})();
+
+function callFontTag(tag) {
+  var paramStr = '{tag:' + JSON.stringify(tag) + ',mode:"apply"}';
+  csInterface.evalScript('markFontSelected(' + paramStr + ')', function(result) {
+    if (result && /^(错误|重命名失败|提示)/.test(result)) {
+      alert(result);
+    }
+  });
+}
+
+if (removeFontTagBtn) {
+  removeFontTagBtn.addEventListener('click', function() {
+    csInterface.evalScript('markFontSelected({tag:"",mode:"remove"})', function(result) {
+      if (result && /^(错误|重命名失败|提示)/.test(result)) {
+        alert(result);
+      }
+    });
+  });
+}
+
+if (applyCustomFontTagBtn) {
+  applyCustomFontTagBtn.addEventListener('click', function() {
+    var tag = customFontTagInput.value;
+    if (tag && tag.trim()) {
+      callFontTag(tag.trim());
+    } else {
+      alert('请输入字体 Tag');
+    }
+  });
+}

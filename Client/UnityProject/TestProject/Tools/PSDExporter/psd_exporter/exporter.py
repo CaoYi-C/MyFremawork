@@ -708,10 +708,10 @@ class PsdExporter:
         """
         Pull text data from a TypeLayer.
 
-        psd-tools gives us `layer.text` (a `Text` object) which has the
-        run/paragraph data, but font/color/size are inside the runs and
-        the API is fiddly. We do best-effort; missing fields stay None and
-        the C# side falls back to defaults.
+        psd-tools `layer.text` returns only the string content; font
+        metadata lives in `layer.engine_dict` (StyleRun → RunArray →
+        StyleSheetData) and `layer.font_names`.  We parse those to get
+        font size, color, and font name.
         """
         content = ""
         font_name = ""
@@ -720,31 +720,49 @@ class PsdExporter:
         alignment = "MiddleCenter"
 
         try:
+            # --- content ---
             text_obj = layer.text
             if text_obj is not None:
                 content = str(text_obj)
-                # Try to read the first run's style.
-                runs = getattr(text_obj, "runs", None) or []
-                if runs:
-                    run = runs[0]
-                    style = getattr(run, "style", None)
-                    if style is not None:
-                        if getattr(style, "font", None):
-                            font_name = _safe_str(style.font.name) or font_name
-                        if getattr(style, "font_size", None):
-                            font_size = float(style.font_size)
-                        if getattr(style, "fill_color", None):
-                            color_hex = _color_to_hex(style.fill_color)
-                        if getattr(style, "alignment", None):
-                            alignment = _psd_alignment_to_unity(str(style.alignment))
-        except Exception as e:  # pragma: no cover - psd-tools text API is fragile
+
+            # --- font name ---
+            names = getattr(layer, "font_names", None) or []
+            if names:
+                font_name = _safe_str(names[0])
+
+            # --- font size, color from engine_dict ---
+            eng = getattr(layer, "engine_dict", None) or {}
+            style_run = eng.get("StyleRun", {})
+            run_array = style_run.get("RunArray", [])
+            if run_array:
+                sheet_data = (
+                    run_array[0]
+                    .get("StyleSheet", {})
+                    .get("StyleSheetData", {})
+                )
+                if "FontSize" in sheet_data:
+                    font_size = float(sheet_data["FontSize"])
+                    # Engine font size is in unscaled design units; the
+                    # displayed size is engine_size × layer transform
+                    # scale.  e.g. 71.23 × 0.6458 ≈ 46.0 pt.
+                    xform = getattr(layer, "transform", None)
+                    if xform and len(xform) >= 4 and xform[3] != 0:
+                        font_size *= abs(xform[3])
+                if "FillColor" in sheet_data:
+                    fc = sheet_data["FillColor"]
+                    if fc.get("Type") == 1:  # RGB
+                        vals = fc.get("Values", [1, 1, 1, 1])
+                        color_hex = "#{:02X}{:02X}{:02X}{:02X}".format(
+                            int(vals[0] * 255),
+                            int(vals[1] * 255),
+                            int(vals[2] * 255),
+                            int(vals[3] * 255),
+                        )
+        except Exception as e:
             ctx.warn(f"Text parse failed for '{layer.name}': {e}")
 
-        # Fallback: rasterize the layer to also produce an image hash, so
-        # the user can still see SOMETHING in Unity even if the vector
-        # text is wrong. We embed the raster hash into textHash.
-        # This is a one-line safety net — designers should bake text in
-        # PS or use a Unity-rebuilt text node.
+        # Fallback: rasterize the layer for a pixel hash so Unity can
+        # still show SOMETHING even if the vector text is off.
         try:
             pil = _composite_layer(layer)
             raster_hash = sha256_bytes(self._encode_png(pil)) if pil else ""
@@ -759,7 +777,7 @@ class PsdExporter:
             "alignment": alignment,
             "bold": False,
             "italic": False,
-            "_rasterHash": raster_hash,  # not part of the public schema; hint only
+            "_rasterHash": raster_hash,
         }
 
         text_hash = composite_hash([
