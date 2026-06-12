@@ -9,11 +9,11 @@ using Fuel.Tools;
 using Game.UI.TestPanel;
 using Fuel.AssetManager;
 using Manager.SceneManager;
-using Manager.UIManager;
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.SceneManagement;
 using FuelSceneManager = Manager.SceneManager.SceneManager;
+using Fuel.Manager.UIManager;
 
 public sealed class FuelFrameworkSmokeTest : MonoBehaviour
 {

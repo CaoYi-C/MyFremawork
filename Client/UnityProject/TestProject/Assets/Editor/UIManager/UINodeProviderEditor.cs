@@ -1,7 +1,7 @@
-using Manager.UIManager;
+﻿using Fuel.Manager.UIManager;
 using UnityEditor;
 
-namespace Manager.UIManager.Editor
+namespace Fuel.Manager.UIManager.Editor
 {
     [CustomEditor(typeof(UINodeProvider), true)]
     public class UINodeProviderEditor : UnityEditor.Editor

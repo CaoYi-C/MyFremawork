@@ -49,7 +49,7 @@ namespace Manager.SceneManager
                 return;
             }
 
-            LoadMainSceneAsync(sceneInfo, sceneData, onProgress, onComplete).Forget();
+            RunSceneOperation(LoadMainSceneAsync(sceneInfo, sceneData, onProgress, onComplete), sceneId, true);
         }
 
         private async UniTask LoadMainSceneAsync(SceneInfo sceneInfo, SceneData sceneData,
@@ -140,7 +140,7 @@ namespace Manager.SceneManager
                 return;
             }
 
-            LoadAdditiveSceneAsync(sceneInfo, sceneData, onProgress, onComplete).Forget();
+            RunSceneOperation(LoadAdditiveSceneAsync(sceneInfo, sceneData, onProgress, onComplete), sceneId, false);
         }
 
         private async UniTask LoadAdditiveSceneAsync(SceneInfo sceneInfo, SceneData sceneData,
@@ -199,7 +199,7 @@ namespace Manager.SceneManager
                 return;
             }
 
-            UnloadSceneAsync(sceneInfo, onComplete).Forget();
+            RunSceneOperation(UnloadSceneAsync(sceneInfo, onComplete), sceneId, sceneInfo.IsMainScene);
         }
 
         /// <summary>
@@ -208,7 +208,7 @@ namespace Manager.SceneManager
         /// <param name="onComplete">卸载完成回调</param>
         public void UnloadAllAdditiveScenes(Action onComplete = null)
         {
-            UnloadAllAdditiveScenesAsync(onComplete).Forget();
+            RunSceneOperation(UnloadAllAdditiveScenesAsync(onComplete), string.Empty, false);
         }
 
         private async UniTask UnloadSceneAsync(SceneInfo sceneInfo, Action onComplete = null)
@@ -304,6 +304,7 @@ namespace Manager.SceneManager
             if (handle == null || !handle.IsValid || handle.Status != EOperationStatus.Succeeded)
             {
                 var error = handle != null && handle.IsValid ? handle.Error : "invalid scene handle";
+                DispatchLoadFailed(sceneId, isMainScene, error);
                 DebugLogger.LogError(LogWriter.SceneManager, $"Failed to load scene by YooAsset AssetsManager: {sceneInfo.ScenePath}, {error}");
                 return false;
             }
@@ -340,6 +341,35 @@ namespace Manager.SceneManager
 
             await AssetsManager.Instance.UnloadSceneAsync(handle);
             _sceneHandles.Remove(sceneInfo.SceneId);
+        }
+
+        private void RunSceneOperation(UniTask operation, string sceneId, bool isMainScene)
+        {
+            RunSceneOperationAsync(operation, sceneId, isMainScene).Forget();
+        }
+
+        private async UniTaskVoid RunSceneOperationAsync(UniTask operation, string sceneId, bool isMainScene)
+        {
+            try
+            {
+                await operation;
+            }
+            catch (Exception e)
+            {
+                DebugLogger.LogError(LogWriter.SceneManager, $"Scene operation failed: {sceneId}, {e}");
+                if (!string.IsNullOrEmpty(sceneId))
+                    DispatchLoadFailed(sceneId, isMainScene, e.Message);
+            }
+        }
+
+        private void DispatchLoadFailed(string sceneId, bool isMainScene, string error)
+        {
+            EventDispatcher.Instance.Dispatch(new Scene_LoadFailedEvent
+            {
+                SceneId = sceneId,
+                IsMainScene = isMainScene,
+                Error = error
+            });
         }
 
         #endregion

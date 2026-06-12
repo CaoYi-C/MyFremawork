@@ -10,14 +10,30 @@
     "BuildPipeline": "EditorSimulateBuildPipeline",
     "PackageName": "Main",
     "PackageVersion": "Simulate",
-    "PackageNote": "2026/6/3 11:33:29",
+    "PackageNote": "2026/6/12 17:11:24",
     "AssetList": [
+        {
+            "Address": "HotUpdate.dll",
+            "AssetPath": "Assets/AssetsPackage/Main/Code/HotUpdate.dll.bytes",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "test_textitems",
+            "AssetPath": "Assets/AssetsPackage/Main/Code/test_textitems.bytes",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
         {
             "Address": "RedDotConfigAsset",
             "AssetPath": "Assets/AssetsPackage/Main/RedDot/RedDotConfigAsset.asset",
             "AssetGuid": "",
             "AssetTags": [],
-            "BundleID": 0,
+            "BundleID": 1,
             "DependentBundleIDs": []
         },
         {
@@ -25,7 +41,7 @@
             "AssetPath": "Assets/AssetsPackage/Main/Scene/SampleScene.unity",
             "AssetGuid": "",
             "AssetTags": [],
-            "BundleID": 1,
+            "BundleID": 2,
             "DependentBundleIDs": []
         },
         {
@@ -33,15 +49,25 @@
             "AssetPath": "Assets/AssetsPackage/Main/UIPrefab/TestPanel.prefab",
             "AssetGuid": "",
             "AssetTags": [],
-            "BundleID": 2,
+            "BundleID": 3,
             "DependentBundleIDs": []
         }
     ],
     "BundleList": [
         {
+            "BundleName": "assets_assetspackage_main_code.bundle",
+            "UnityCrc": 0,
+            "FileHash": "580699c45a051a4d070ca77f6ffd52b4",
+            "FileCrc": 0,
+            "FileSize": 5159,
+            "IsEncrypted": false,
+            "Tags": [],
+            "DependentBundleIDs": []
+        },
+        {
             "BundleName": "assets_assetspackage_main_reddot.bundle",
             "UnityCrc": 0,
-            "FileHash": "dad9c225828ac58aa3045a44ff209155",
+            "FileHash": "e7e30c2a4440e26ba47588696ccb024d",
             "FileCrc": 0,
             "FileSize": 13863,
             "IsEncrypted": false,
@@ -51,7 +77,7 @@
         {
             "BundleName": "assets_assetspackage_main_scene.bundle",
             "UnityCrc": 0,
-            "FileHash": "8ba8029e2b1c30fb673e5ee2eb28fb30",
+            "FileHash": "63561b8aa41234a28f6d6e613d895f0e",
             "FileCrc": 0,
             "FileSize": 7874,
             "IsEncrypted": false,
@@ -61,7 +87,7 @@
         {
             "BundleName": "assets_assetspackage_main_uiprefab.bundle",
             "UnityCrc": 0,
-            "FileHash": "ed5bdc451e3539413cae85ee8c9a4318",
+            "FileHash": "6c6644484e5894e55e1515e567fc7ed3",
             "FileCrc": 0,
             "FileSize": 13177,
             "IsEncrypted": false,

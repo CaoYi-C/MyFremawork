@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using Fuel.NetFramework.Codec;
@@ -24,6 +25,7 @@ namespace Fuel.NetFramework.Protocol
         private int _bufferOffset; // 缓冲区中已有的数据长度
 
         private readonly object _sendLock = new object();
+        private readonly ConcurrentQueue<Action> _eventQueue = new ConcurrentQueue<Action>();
 
         public ProtocolType Type => ProtocolType.TCP;
         public string Host { get; private set; }
@@ -35,6 +37,26 @@ namespace Fuel.NetFramework.Protocol
         public event Action<bool> OnDisconnected;
         public event Action<uint, ArraySegment<byte>> OnDataReceived;
         public event Action<string> OnError;
+
+        public void Update()
+        {
+            while (_eventQueue.TryDequeue(out var action))
+            {
+                try
+                {
+                    action?.Invoke();
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[TcpProtocol] Queued event error: {e}");
+                }
+            }
+        }
+
+        private void EnqueueEvent(Action action)
+        {
+            _eventQueue.Enqueue(action);
+        }
 
         public void Connect(string host, int port)
         {
@@ -53,7 +75,7 @@ namespace Fuel.NetFramework.Protocol
             catch (Exception e)
             {
                 Debug.LogError($"[TcpProtocol] Invalid endpoint {host}:{port}: {e.Message}");
-                OnError?.Invoke($"Invalid endpoint: {e.Message}");
+                EnqueueEvent(() => OnError?.Invoke($"Invalid endpoint: {e.Message}"));
                 return;
             }
 
@@ -79,7 +101,7 @@ namespace Fuel.NetFramework.Protocol
                 Debug.LogError($"[TcpProtocol] Connect failed: {e.Message}");
                 try { newSocket?.Close(); } catch { /* swallow */ }
                 _socket = null;
-                OnError?.Invoke($"Connect failed: {e.Message}");
+                EnqueueEvent(() => OnError?.Invoke($"Connect failed: {e.Message}"));
             }
         }
 
@@ -94,8 +116,8 @@ namespace Fuel.NetFramework.Protocol
             catch (Exception e)
             {
                 Debug.LogError($"[TcpProtocol] Connect callback error: {e.Message}");
-                OnError?.Invoke($"Connect error: {e.Message}");
-                HandleDisconnect(true);
+                EnqueueEvent(() => OnError?.Invoke($"Connect error: {e.Message}"));
+                HandleDisconnect(sock, true);
                 return;
             }
 
@@ -107,15 +129,15 @@ namespace Fuel.NetFramework.Protocol
             }
 
             Debug.Log("[TcpProtocol] Connected.");
-            OnConnected?.Invoke();
+            EnqueueEvent(() => OnConnected?.Invoke());
 
             // 开始接收数据
-            BeginReceive();
+            BeginReceive(sock);
         }
 
-        private void BeginReceive()
+        private void BeginReceive(Socket socket)
         {
-            if (!IsConnected) return;
+            if (socket == null || _socket != socket || !socket.Connected) return;
 
             // 至少保证有 1 字节可用空间；上限到 MaxBufferSize 后不再增长（仍可能 0 字节可用 = buffer 满）
             EnsureBufferSpace(1);
@@ -125,23 +147,23 @@ namespace Fuel.NetFramework.Protocol
             {
                 // 缓冲区撑到上限仍没有完整包 — 视为协议错误（粘包叠加超出单包上限），断开
                 Debug.LogError($"[TcpProtocol] Receive buffer full ({_receiveBuffer.Length} bytes), disconnecting.");
-                OnError?.Invoke("Receive buffer full");
-                HandleDisconnect(true);
+                EnqueueEvent(() => OnError?.Invoke("Receive buffer full"));
+                HandleDisconnect(socket, true);
                 return;
             }
 
             try
             {
-                _socket.BeginReceive(
+                socket.BeginReceive(
                     _receiveBuffer, _bufferOffset, available,
                     SocketFlags.None,
-                    ReceiveCallback, null);
+                    ReceiveCallback, socket);
             }
             catch (Exception e)
             {
                 Debug.LogError($"[TcpProtocol] BeginReceive error: {e.Message}");
-                OnError?.Invoke($"Receive error: {e.Message}");
-                HandleDisconnect(true);
+                EnqueueEvent(() => OnError?.Invoke($"Receive error: {e.Message}"));
+                HandleDisconnect(socket, true);
             }
         }
 
@@ -169,38 +191,39 @@ namespace Fuel.NetFramework.Protocol
 
         private void ReceiveCallback(IAsyncResult ar)
         {
-            if (!IsConnected) return;
+            var socket = ar.AsyncState as Socket;
+            if (socket == null || _socket != socket || !socket.Connected) return;
 
             int bytesRead;
             try
             {
-                bytesRead = _socket.EndReceive(ar);
+                bytesRead = socket.EndReceive(ar);
             }
             catch (Exception e)
             {
                 Debug.LogError($"[TcpProtocol] EndReceive error: {e.Message}");
-                HandleDisconnect(true);
+                HandleDisconnect(socket, true);
                 return;
             }
 
             if (bytesRead <= 0)
             {
                 Debug.Log("[TcpProtocol] Server closed connection.");
-                HandleDisconnect(false);
+                HandleDisconnect(socket, false);
                 return;
             }
 
             _bufferOffset += bytesRead;
-            ProcessReceivedData();
+            ProcessReceivedData(socket);
 
             // 继续接收下一段数据
-            BeginReceive();
+            BeginReceive(socket);
         }
 
         /// <summary>
         /// 处理缓冲区中的数据，循环解码完整包
         /// </summary>
-        private void ProcessReceivedData()
+        private void ProcessReceivedData(Socket socket)
         {
             int offset = 0;
 
@@ -221,7 +244,9 @@ namespace Fuel.NetFramework.Protocol
 
                     try
                     {
-                        OnDataReceived?.Invoke(packet.CmdId, packet.Body);
+                        uint cmdId = packet.CmdId;
+                        ArraySegment<byte> safeBody = packet.Body;
+                        EnqueueEvent(() => OnDataReceived?.Invoke(cmdId, safeBody));
                     }
                     catch (Exception e)
                     {
@@ -231,7 +256,7 @@ namespace Fuel.NetFramework.Protocol
                 catch (Exception e)
                 {
                     Debug.LogError($"[TcpProtocol] Decode error: {e.Message}");
-                    HandleDisconnect(true);
+                    HandleDisconnect(socket, true);
                     return;
                 }
             }
@@ -259,58 +284,74 @@ namespace Fuel.NetFramework.Protocol
 
             lock (_sendLock)
             {
+                var socket = _socket;
+                if (socket == null || !socket.Connected)
+                {
+                    Debug.LogWarning("[TcpProtocol] Cannot send, not connected.");
+                    return;
+                }
+
                 try
                 {
-                    _socket.BeginSend(data, 0, data.Length, SocketFlags.None, SendCallback, null);
+                    socket.BeginSend(data, 0, data.Length, SocketFlags.None, SendCallback, socket);
                 }
                 catch (Exception e)
                 {
                     Debug.LogError($"[TcpProtocol] Send error: {e.Message}");
-                    OnError?.Invoke($"Send error: {e.Message}");
-                    HandleDisconnect(true);
+                    EnqueueEvent(() => OnError?.Invoke($"Send error: {e.Message}"));
+                    HandleDisconnect(socket, true);
                 }
             }
         }
 
         private void SendCallback(IAsyncResult ar)
         {
+            var socket = ar.AsyncState as Socket;
+            if (socket == null || _socket != socket) return;
+
             try
             {
-                _socket.EndSend(ar);
+                socket.EndSend(ar);
             }
             catch (Exception e)
             {
                 Debug.LogError($"[TcpProtocol] Send callback error: {e.Message}");
-                HandleDisconnect(true);
+                HandleDisconnect(socket, true);
             }
         }
 
         public void Close()
         {
-            HandleDisconnect(false);
+            HandleDisconnect(null, false);
         }
 
-        private void HandleDisconnect(bool isAbnormal)
+        private void HandleDisconnect(Socket expectedSocket, bool isAbnormal)
         {
-            if (_socket == null) return;
+            Socket socket;
+            lock (_sendLock)
+            {
+                socket = _socket;
+                if (socket == null) return;
+                if (expectedSocket != null && socket != expectedSocket) return;
+
+                _socket = null;
+                _bufferOffset = 0;
+            }
 
             try
             {
-                _socket.Shutdown(SocketShutdown.Both);
+                socket.Shutdown(SocketShutdown.Both);
             }
             catch { /* ignore shutdown errors */ }
 
             try
             {
-                _socket.Close();
+                socket.Close();
             }
             catch { /* ignore close errors */ }
 
-            _socket = null;
-            _bufferOffset = 0;
-
             Debug.Log($"[TcpProtocol] Disconnected. Abnormal: {isAbnormal}");
-            OnDisconnected?.Invoke(isAbnormal);
+            EnqueueEvent(() => OnDisconnected?.Invoke(isAbnormal));
         }
     }
 }

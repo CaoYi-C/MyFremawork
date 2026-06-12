@@ -4,7 +4,7 @@ using Fuel.Singleton;
 using UnityEngine;
 using UI = UnityEngine.UI;
 
-namespace Manager.UIManager
+namespace Fuel.Manager.UIManager
 {
     public class UIManager : MonoSingleton<UIManager>
     {
@@ -67,7 +67,6 @@ namespace Manager.UIManager
 
         private void OnEnable()
         {
-            // Fix #9: replace per-frame Update() poll with a Canvas render callback
             Canvas.preWillRenderCanvases += OnPreWillRenderCanvases;
         }
 
@@ -76,7 +75,6 @@ namespace Manager.UIManager
             Canvas.preWillRenderCanvases -= OnPreWillRenderCanvases;
         }
 
-        // Fix #9: fires once per frame only when canvases are about to render, cheaper than Update()
         private void OnPreWillRenderCanvases()
         {
             if (Screen.width != _lastScreenWidth || Screen.height != _lastScreenHeight)
@@ -142,8 +140,6 @@ namespace Manager.UIManager
                 _layerCanvases[layer] = canvas;
                 _layerScalers[layer] = scaler;
                 _layerRoots[layer] = layerObj.transform;
-                // Fix #5: removed UILayerHelper.RegisterLayerRoot — that static dict duplicates
-                // _layerRoots and causes dangling references after scene reload.
             }
         }
 
@@ -172,7 +168,6 @@ namespace Manager.UIManager
             _resourceManager.RegisterPrefabPath(windowId, prefabPath);
         }
 
-        // Fix #6: combined registration ensures factory and prefab are always set together
         public void RegisterWindow(string windowId, string prefabPath, Func<UIWindowData, UIWindow> factory)
         {
             _windowFactory[windowId] = factory;
@@ -230,8 +225,6 @@ namespace Manager.UIManager
             return window;
         }
 
-        // Fix #1: was missing the final Pop() that closes the target window itself;
-        // the old for-loop condition (_stack.Count <= index) was always false after PopToIndex.
         public void CloseWindow(string windowId)
         {
             int index = _stack.FindIndex(windowId);
@@ -246,7 +239,6 @@ namespace Manager.UIManager
             _stack.Pop();
         }
 
-        // Fix #8: evict the oldest (bottom) window instead of the newest (top) on overflow
         private void HandleStackOverflow()
         {
             while (_stack.Count >= _maxStackCount)
@@ -296,6 +288,12 @@ namespace Manager.UIManager
 
             var layerRoot = GetLayerRoot(window.LayerId);
             var viewObj = _resourceManager.CreateInstance(windowId, layerRoot);
+            if (viewObj == null)
+            {
+                Debug.LogError($"[UIManager] Reload window failed, create instance returned null: {windowId}");
+                return null;
+            }
+
             window.ViewObject = viewObj;
             window.OnReload();
 

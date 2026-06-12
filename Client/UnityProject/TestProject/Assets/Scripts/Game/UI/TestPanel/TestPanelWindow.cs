@@ -1,4 +1,4 @@
-﻿using Manager.UIManager;
+﻿using Fuel.Manager.UIManager;
 
 namespace Game.UI.TestPanel
 {

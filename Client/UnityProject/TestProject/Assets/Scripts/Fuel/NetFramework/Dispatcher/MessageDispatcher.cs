@@ -18,6 +18,7 @@ namespace Fuel.NetFramework.Dispatcher
         private delegate void MessageHandler(uint cmdId, ArraySegment<byte> body);
 
         private readonly Dictionary<uint, MessageHandler> _handlers = new Dictionary<uint, MessageHandler>();
+        private readonly object _handlersLock = new object();
 
         // ---- Request-Response 缓存 ----
         // 哪些 cmdId 是 Req-Rsp 模式（双参数 handler）
@@ -63,10 +64,7 @@ namespace Fuel.NetFramework.Dispatcher
         /// </summary>
         public void Register<TResp>(uint cmdId, Action<TResp> handler) where TResp : IMessage<TResp>, new()
         {
-            if (_handlers.ContainsKey(cmdId))
-            {
-                Debug.LogWarning($"[MessageDispatcher] Handler for cmd {cmdId} already registered, overwriting.");
-            }
+            WarnIfHandlerExists(cmdId);
 
             lock (_pendingLock)
             {
@@ -75,11 +73,12 @@ namespace Fuel.NetFramework.Dispatcher
             }
 
             var parser = new MessageParser<TResp>(() => new TResp());
-            _handlers[cmdId] = (id, body) =>
+            MessageHandler messageHandler = (id, body) =>
             {
                 TResp msg = parser.ParseFrom(body.Array, body.Offset, body.Count);
                 handler?.Invoke(msg);
             };
+            SetHandler(cmdId, messageHandler);
         }
 
         /// <summary>
@@ -87,10 +86,7 @@ namespace Fuel.NetFramework.Dispatcher
         /// </summary>
         public void Register(uint cmdId, MessageParser respParser, Action<IMessage> handler)
         {
-            if (_handlers.ContainsKey(cmdId))
-            {
-                Debug.LogWarning($"[MessageDispatcher] Handler for cmd {cmdId} already registered, overwriting.");
-            }
+            WarnIfHandlerExists(cmdId);
 
             lock (_pendingLock)
             {
@@ -98,11 +94,12 @@ namespace Fuel.NetFramework.Dispatcher
                 _pendingRequests.Remove(cmdId);
             }
 
-            _handlers[cmdId] = (id, body) =>
+            MessageHandler messageHandler = (id, body) =>
             {
                 IMessage msg = respParser.ParseFrom(body.Array, body.Offset, body.Count);
                 handler?.Invoke(msg);
             };
+            SetHandler(cmdId, messageHandler);
         }
 
         /// <summary>
@@ -115,10 +112,7 @@ namespace Fuel.NetFramework.Dispatcher
             where TReq : IMessage<TReq>, new()
             where TRsp : IMessage<TRsp>, new()
         {
-            if (_handlers.ContainsKey(cmdId))
-            {
-                Debug.LogWarning($"[MessageDispatcher] Handler for cmd {cmdId} already registered, overwriting.");
-            }
+            WarnIfHandlerExists(cmdId);
 
             lock (_pendingLock)
             {
@@ -127,7 +121,7 @@ namespace Fuel.NetFramework.Dispatcher
             }
 
             var rspParser = new MessageParser<TRsp>(() => new TRsp());
-            _handlers[cmdId] = (id, body) =>
+            MessageHandler messageHandler = (id, body) =>
             {
                 TRsp rsp = rspParser.ParseFrom(body.Array, body.Offset, body.Count);
 
@@ -151,6 +145,26 @@ namespace Fuel.NetFramework.Dispatcher
 
                 handler?.Invoke(req, rsp);
             };
+            SetHandler(cmdId, messageHandler);
+        }
+
+        private void WarnIfHandlerExists(uint cmdId)
+        {
+            lock (_handlersLock)
+            {
+                if (_handlers.ContainsKey(cmdId))
+                {
+                    Debug.LogWarning($"[MessageDispatcher] Handler for cmd {cmdId} already registered, overwriting.");
+                }
+            }
+        }
+
+        private void SetHandler(uint cmdId, MessageHandler handler)
+        {
+            lock (_handlersLock)
+            {
+                _handlers[cmdId] = handler;
+            }
         }
 
         #endregion
@@ -241,10 +255,14 @@ namespace Fuel.NetFramework.Dispatcher
         /// </summary>
         public void Dispatch(uint cmdId, ArraySegment<byte> body)
         {
-            if (!_handlers.TryGetValue(cmdId, out MessageHandler handler))
+            MessageHandler handler;
+            lock (_handlersLock)
             {
-                Debug.LogWarning($"[MessageDispatcher] No handler registered for cmd {cmdId}.");
-                return;
+                if (!_handlers.TryGetValue(cmdId, out handler))
+                {
+                    Debug.LogWarning($"[MessageDispatcher] No handler registered for cmd {cmdId}.");
+                    return;
+                }
             }
 
             EnqueueMainThread(() =>
@@ -297,12 +315,18 @@ namespace Fuel.NetFramework.Dispatcher
                 _reqRspCmdIds.Remove(cmdId);
                 _pendingRequests.Remove(cmdId);
             }
-            return _handlers.Remove(cmdId);
+            lock (_handlersLock)
+            {
+                return _handlers.Remove(cmdId);
+            }
         }
 
         public void Clear()
         {
-            _handlers.Clear();
+            lock (_handlersLock)
+            {
+                _handlers.Clear();
+            }
             lock (_pendingLock)
             {
                 _reqRspCmdIds.Clear();

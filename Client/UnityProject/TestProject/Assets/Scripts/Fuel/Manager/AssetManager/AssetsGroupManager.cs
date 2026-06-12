@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Fuel.Pools;
 using Fuel.Singleton;
+using UnityEngine;
 using UnityEngine.Events;
 
 namespace Fuel.AssetManager
@@ -22,7 +23,10 @@ namespace Fuel.AssetManager
         protected override void Init()
         {
             base.Init();
+            DestroyEvent = new UnityEvent();
+            DisposeEvent = new UnityEvent();
             _groupMap = new Dictionary<string, AssetsGroup>();
+            Application.quitting += Dispose;
         }
 
 
@@ -67,8 +71,9 @@ namespace Fuel.AssetManager
             }
         }
 
-        protected void OnDestroy()
+        public void Clear(bool unloadUnusedAssets = true)
         {
+            if (_groupMap == null) return;
             StopLoad();
             DestroyEvent?.Invoke();
             foreach (var group in _groupMap.Values)
@@ -76,16 +81,30 @@ namespace Fuel.AssetManager
                 ObjectPools.Instance.Recycle(group);
             }
             _groupMap.Clear();
-            AssetsManager.Instance.RemoveUnusedAssets();
+            if (unloadUnusedAssets)
+                AssetsManager.Instance.RemoveUnusedAssets();
+        }
+
+        public void Dispose()
+        {
+            Application.quitting -= Dispose;
+            Clear(false);
+            DisposeEvent?.Invoke();
+            DestroyEvent?.RemoveAllListeners();
+            DisposeEvent?.RemoveAllListeners();
+            DestroyEvent = null;
+            DisposeEvent = null;
+            _groupMap = null;
+        }
+
+        protected void OnDestroy()
+        {
+            Clear();
         }
 
         protected void OnDispose()
         {
-            DisposeEvent?.Invoke();
-            DestroyEvent?.RemoveAllListeners();
-            DisposeEvent?.RemoveAllListeners();
-            DisposeEvent = null;
-            _groupMap = null;
+            Dispose();
         }
     }
 }

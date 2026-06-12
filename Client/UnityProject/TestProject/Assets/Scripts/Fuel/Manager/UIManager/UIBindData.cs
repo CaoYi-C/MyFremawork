@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Manager.UIManager
+namespace Fuel.Manager.UIManager
 {
     /// <summary>
     /// 绑定条目：记录一个需要在代码中引用的组件。

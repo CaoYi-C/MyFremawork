@@ -1,13 +1,13 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Manager.UIManager;
+using Fuel.Manager.UIManager;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
-namespace Manager.UIManager.Editor
+namespace Fuel.Manager.UIManager.Editor
 {
     [InitializeOnLoad]
     [CustomEditor(typeof(GameObject))]
@@ -137,7 +137,7 @@ namespace Manager.UIManager.Editor
             DrawGenerateButtons();
 
             GUI.color = new Color(1f, 0.6f, 0.6f);
-            if (GUILayout.Button("删除绑定数据文件") && EditorUtility.DisplayDialog("确认", "将删除绑定数据 .asset 文件，此操作不可恢复！", "确定", "取消"))
+            if (GUILayout.Button("删除绑定数据文件") && EditorUtility.DisplayDialog("确认", "将删除绑定数据 .asset 文件，此操作不可恢复。", "确定", "取消"))
             {
                 AssetDatabase.DeleteAsset(AssetDatabase.GetAssetPath(_bindData));
                 _bindData = null;
@@ -209,7 +209,7 @@ namespace Manager.UIManager.Editor
                 int entryIndex = FindEntryIndex(GetTargetPath(_currentGo), info.FullTypeName);
                 EditorGUILayout.BeginHorizontal();
                 DrawComponentIcon(info.Component.GetType());
-                EditorGUILayout.LabelField((info.IsBound ? "✓ " : "  ") + info.TypeName, GUILayout.MinWidth(100));
+                EditorGUILayout.LabelField((info.IsBound ? "✓" : "  ") + info.TypeName, GUILayout.MinWidth(100));
                 DrawVariableNameField(entryIndex);
                 GUI.color = info.IsBound ? new Color(1f, 0.8f, 0.5f) : new Color(0.5f, 0.9f, 1f);
                 if (GUILayout.Button(info.IsBound ? "移除绑定" : "+ 绑定", GUILayout.Width(80)))
@@ -249,7 +249,7 @@ namespace Manager.UIManager.Editor
             int entryIndex = FindEntryIndex(GetTargetPath(_currentGo), typeof(GameObject).FullName);
             EditorGUILayout.BeginHorizontal();
             DrawComponentIcon(typeof(GameObject));
-            EditorGUILayout.LabelField((isBound ? "✓ " : "  ") + "GameObject", GUILayout.MinWidth(100));
+            EditorGUILayout.LabelField((isBound ? "✓" : "  ") + "GameObject", GUILayout.MinWidth(100));
             DrawVariableNameField(entryIndex);
             GUI.color = isBound ? new Color(1f, 0.8f, 0.5f) : new Color(0.5f, 0.9f, 1f);
             bool shouldToggleBinding = false;

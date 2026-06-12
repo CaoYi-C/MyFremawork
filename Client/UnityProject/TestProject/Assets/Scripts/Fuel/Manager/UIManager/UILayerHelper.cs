@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Manager.UIManager
+namespace Fuel.Manager.UIManager
 {
     public static class UILayerHelper
     {
@@ -17,11 +17,6 @@ namespace Manager.UIManager
         {
             return layer.ToString();
         }
-
-        // Fix #5: removed static _layerRoots dictionary, RegisterLayerRoot, and GetLayerRoot.
-        // That static dictionary duplicated UIManager._layerRoots and caused dangling Transform
-        // references after scene reload because static fields are never cleared between scenes.
-        // Use UIManager.Instance.GetLayerRoot() for runtime layer root lookups.
 
         public static bool IsHigherLayer(UILayer layer1, UILayer layer2)
         {

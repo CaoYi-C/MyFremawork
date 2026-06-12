@@ -35,21 +35,47 @@ namespace Fuel.Launcher.Table
 
         private async UniTask CacheIfExistsAsync(LocalStartupConfig localConfig, string fileName, CancellationToken cancellationToken)
         {
-            var asset = await LoadTextAssetAsync(localConfig, fileName, cancellationToken);
-            if (asset == null)
+            var table = await LoadTableAsync(localConfig, fileName, cancellationToken);
+            if (!table.HasValue)
                 return;
 
-            _binaryCache[fileName] = asset.bytes;
-            _jsonCache[fileName] = asset.text;
+            _binaryCache[fileName] = table.Value.Bytes;
+            _jsonCache[fileName] = table.Value.Text;
         }
 
-        private static async UniTask<TextAsset> LoadTextAssetAsync(LocalStartupConfig localConfig, string fileName, CancellationToken cancellationToken)
+        private static async UniTask<TableData?> LoadTableAsync(LocalStartupConfig localConfig, string fileName, CancellationToken cancellationToken)
         {
             var path = string.Format(localConfig.configPathPattern, fileName);
             var package = YooAssets.GetPackage(localConfig.packageName);
             var handle = package.LoadAssetAsync<TextAsset>(path);
-            await handle.ToUniTask(cancellationToken: cancellationToken);
-            return handle.GetAssetObject<TextAsset>();
+            try
+            {
+                await handle.ToUniTask(cancellationToken: cancellationToken);
+                var asset = handle.GetAssetObject<TextAsset>();
+                if (asset == null)
+                    return null;
+
+                var bytes = asset.bytes;
+                var copiedBytes = new byte[bytes.Length];
+                System.Buffer.BlockCopy(bytes, 0, copiedBytes, 0, bytes.Length);
+                return new TableData(copiedBytes, asset.text);
+            }
+            finally
+            {
+                handle.Release();
+            }
+        }
+
+        private readonly struct TableData
+        {
+            public readonly byte[] Bytes;
+            public readonly string Text;
+
+            public TableData(byte[] bytes, string text)
+            {
+                Bytes = bytes;
+                Text = text;
+            }
         }
     }
 }

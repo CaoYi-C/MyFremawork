@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace Manager.UIManager
+namespace Fuel.Manager.UIManager
 {
     /// <summary>
     /// Base class for generated UGUINodeProvider components.

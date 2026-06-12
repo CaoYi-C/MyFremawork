@@ -1,0 +1,43 @@
+﻿2026-06-12 17:51:53.384 [INFO] Building package 'Main' with pipeline 'ScriptableBuildPipeline'.
+2026-06-12 17:51:53.385 [INFO] --------------------------------------------->TaskPrepare<--------------------------------------------
+2026-06-12 17:51:53.388 [WARN] [ErrorCode131] Builtin shaders bundle name is null. It will cause resource redundancy.
+2026-06-12 17:51:53.397 [INFO] Delete package root directory: 'Bundles/StandaloneWindows64/Main'.
+2026-06-12 17:51:53.398 [INFO] Create pipeline output directory: 'Bundles/StandaloneWindows64/Main/OutputCache'.
+2026-06-12 17:51:53.399 [INFO] TaskPrepare completed in 0 seconds.
+2026-06-12 17:51:53.400 [INFO] --------------------------------------------->TaskGetBuildMap<--------------------------------------------
+2026-06-12 17:51:53.636 [WARN] [ErrorCode201] Found unreferenced asset and removed it: 'Assets/AssetsPackage/Depend/Font/PlaywriteGBJ-Italic-VariableFont_wght.ttf'.
+2026-06-12 17:51:53.638 [WARN] [ErrorCode201] Found unreferenced asset and removed it: 'Assets/AssetsPackage/Depend/Font/PlaywriteGBJ-VariableFont_wght.ttf'.
+2026-06-12 17:51:53.638 [WARN] [ErrorCode201] Found unreferenced asset and removed it: 'Assets/AssetsPackage/Depend/Mat/TestCube.mat'.
+2026-06-12 17:51:53.638 [WARN] [ErrorCode201] Found unreferenced asset and removed it: 'Assets/AssetsPackage/Depend/Model/222.fbx'.
+2026-06-12 17:51:53.639 [WARN] [ErrorCode201] Found unreferenced asset and removed it: 'Assets/AssetsPackage/Depend/Shader/Custom_FrostedGlass.mat'.
+2026-06-12 17:51:53.639 [WARN] [ErrorCode201] Found unreferenced asset and removed it: 'Assets/AssetsPackage/Depend/Shader/FrostedGlass.shader'.
+2026-06-12 17:51:53.641 [INFO] TaskGetBuildMap completed in 0 seconds.
+2026-06-12 17:51:53.641 [INFO] --------------------------------------------->TaskBuilding<--------------------------------------------
+2026-06-12 17:52:02.878 [INFO] UnityEngine build succeeded.
+2026-06-12 17:52:02.879 [INFO] TaskBuilding completed in 9 seconds.
+2026-06-12 17:52:02.879 [INFO] --------------------------------------------->TaskVerifyBuildResult<--------------------------------------------
+2026-06-12 17:52:02.888 [INFO] Build results verified successfully.
+2026-06-12 17:52:02.889 [INFO] TaskVerifyBuildResult completed in 0 seconds.
+2026-06-12 17:52:02.890 [INFO] --------------------------------------------->TaskEncryption<--------------------------------------------
+2026-06-12 17:52:02.891 [INFO] TaskEncryption completed in 0 seconds.
+2026-06-12 17:52:02.891 [INFO] --------------------------------------------->TaskUpdateBundleInfo<--------------------------------------------
+2026-06-12 17:52:02.935 [INFO] TaskUpdateBundleInfo completed in 0 seconds.
+2026-06-12 17:52:02.935 [INFO] --------------------------------------------->TaskCreateManifest<--------------------------------------------
+2026-06-12 17:52:02.950 [INFO] Create package manifest file: 'Bundles/StandaloneWindows64/Main/local-dev/Main_local-dev.json'.
+2026-06-12 17:52:02.982 [INFO] Create package manifest file: 'Bundles/StandaloneWindows64/Main/local-dev/Main_local-dev.bytes'.
+2026-06-12 17:52:02.985 [INFO] Create package manifest hash file: 'Bundles/StandaloneWindows64/Main/local-dev/Main_local-dev.hash'.
+2026-06-12 17:52:03.026 [INFO] Create package manifest version file: 'Bundles/StandaloneWindows64/Main/local-dev/Main.version'.
+2026-06-12 17:52:03.034 [INFO] TaskCreateManifest completed in 0 seconds.
+2026-06-12 17:52:03.035 [INFO] --------------------------------------------->TaskCreateReport<--------------------------------------------
+2026-06-12 17:52:03.044 [INFO] Create build report file: 'Bundles/StandaloneWindows64/Main/local-dev/Main_local-dev.report'.
+2026-06-12 17:52:03.044 [INFO] TaskCreateReport completed in 0 seconds.
+2026-06-12 17:52:03.044 [INFO] --------------------------------------------->TaskCreatePackage<--------------------------------------------
+2026-06-12 17:52:03.045 [INFO] Start making patch package: 'Bundles/StandaloneWindows64/Main/local-dev'.
+2026-06-12 17:52:03.053 [INFO] TaskCreatePackage completed in 0 seconds.
+2026-06-12 17:52:03.054 [INFO] --------------------------------------------->TaskCopyBundledFiles<--------------------------------------------
+2026-06-12 17:52:03.080 [INFO] Bundled files copy complete: 'Library\Locus\tmp\resource-server/Main'.
+2026-06-12 17:52:03.080 [INFO] TaskCopyBundledFiles completed in 0 seconds.
+2026-06-12 17:52:03.081 [INFO] --------------------------------------------->TaskCreateCatalog<--------------------------------------------
+2026-06-12 17:52:03.151 [INFO] TaskCreateCatalog completed in 0 seconds.
+2026-06-12 17:52:03.152 [INFO] Total build process time: 9 seconds.
+2026-06-12 17:52:03.152 [INFO] Resource pipeline build succeeded.

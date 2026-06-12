@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using Fuel.AssetManager;
 using UnityEngine;
 
-namespace Manager.UIManager
+namespace Fuel.Manager.UIManager
 {
     public class UIResourceManager
     {

@@ -2,6 +2,7 @@ using System;
 using Cysharp.Threading.Tasks;
 using Fuel.Log;
 using Fuel.Singleton;
+using UnityEngine;
 using YooAsset;
 
 namespace Fuel.AssetManager
@@ -92,6 +93,12 @@ namespace Fuel.AssetManager
         public UnityEngine.Object Load(string path, Type type, out AssetHandle handle, string packageName = null)
         {
             handle = GetPackage(packageName).LoadAssetSync(path, type);
+            if (!IsAssetHandleSucceeded(handle, path))
+            {
+                handle?.Release();
+                handle = null;
+                return null;
+            }
             return handle.AssetObject;
         }
 
@@ -100,6 +107,12 @@ namespace Fuel.AssetManager
         public T Load<T>(string path, out AssetHandle handle, string packageName = null) where T : UnityEngine.Object
         {
             handle = GetPackage(packageName).LoadAssetSync<T>(path);
+            if (!IsAssetHandleSucceeded(handle, path))
+            {
+                handle?.Release();
+                handle = null;
+                return null;
+            }
             return handle.AssetObject as T;
         }
 
@@ -108,6 +121,12 @@ namespace Fuel.AssetManager
         public T LoadSub<T>(string mainPath, string path, out SubAssetsHandle handle, string packageName = null) where T : UnityEngine.Object
         {
             handle = GetPackage(packageName).LoadSubAssetsSync<T>(mainPath);
+            if (!IsSubAssetsHandleSucceeded(handle, mainPath))
+            {
+                handle?.Release();
+                handle = null;
+                return null;
+            }
             return handle.GetSubAssetObject<T>(path);
         }
 
@@ -123,6 +142,11 @@ namespace Fuel.AssetManager
         {
             var handle = GetPackage(packageName).LoadAssetAsync(path, type);
             await handle.ToUniTask();
+            if (!IsAssetHandleSucceeded(handle, path))
+            {
+                handle?.Release();
+                return (null, null);
+            }
             return (handle.AssetObject, handle);
         }
 
@@ -130,6 +154,11 @@ namespace Fuel.AssetManager
         {
             var handle = GetPackage(packageName).LoadAssetAsync<T>(path);
             await handle.ToUniTask();
+            if (!IsAssetHandleSucceeded(handle, path))
+            {
+                handle?.Release();
+                return (null, null);
+            }
             return (handle.GetAssetObject<T>(), handle);
         }
 
@@ -137,7 +166,40 @@ namespace Fuel.AssetManager
         {
             var handle = GetPackage(packageName).LoadSubAssetsAsync<T>(mainPath);
             await handle.ToUniTask();
+            if (!IsSubAssetsHandleSucceeded(handle, mainPath))
+            {
+                handle?.Release();
+                return (null, null);
+            }
             return (handle.GetSubAssetObject<T>(path), handle);
+        }
+
+        private static bool IsAssetHandleSucceeded(AssetHandle handle, string path)
+        {
+            if (handle != null && handle.IsValid && handle.Status == EOperationStatus.Succeeded)
+                return true;
+
+            DebugLogger.LogError($"Load asset failed: {path}, {GetHandleError(handle)}");
+            return false;
+        }
+
+        private static bool IsSubAssetsHandleSucceeded(SubAssetsHandle handle, string path)
+        {
+            if (handle != null && handle.IsValid && handle.Status == EOperationStatus.Succeeded)
+                return true;
+
+            DebugLogger.LogError($"Load sub assets failed: {path}, {GetHandleError(handle)}");
+            return false;
+        }
+
+        private static string GetHandleError(AssetHandle handle)
+        {
+            return handle != null && handle.IsValid ? handle.Error : "invalid handle";
+        }
+
+        private static string GetHandleError(SubAssetsHandle handle)
+        {
+            return handle != null && handle.IsValid ? handle.Error : "invalid handle";
         }
 
         public SceneHandle LoadSceneAsync(string path, bool additive = false, string packageName = null)

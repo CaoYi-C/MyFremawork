@@ -3,7 +3,7 @@ using Cysharp.Threading.Tasks;
 using Fuel.AssetManager;
 using UnityEngine;
 
-namespace Manager.UIManager
+namespace Fuel.Manager.UIManager
 {
     public abstract class UIWindow
     {
@@ -31,7 +31,6 @@ namespace Manager.UIManager
         /// </summary>
         protected virtual void InitNodeProvider() { }
 
-        // Fix #4: guard against calling Show/Hide after Release
         public virtual void OnShow(UIWindowData data = null)
         {
             if (IsRelease) return;
@@ -45,7 +44,6 @@ namespace Manager.UIManager
             OnShowEvent?.Invoke(this);
         }
 
-        // Fix #4: guard against calling Hide after Release
         public virtual void OnHide()
         {
             if (IsRelease) return;

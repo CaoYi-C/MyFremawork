@@ -1,9 +1,7 @@
-#if UNITY_EDITOR
+﻿#if UNITY_EDITOR
 using UnityEngine;
 using UnityEditor;
-using Manager.UIManager;
-
-namespace Manager.UIManager.Editor
+namespace Fuel.Manager.UIManager.Editor
 {
     public class UIEditorDebugWindow : EditorWindow
     {

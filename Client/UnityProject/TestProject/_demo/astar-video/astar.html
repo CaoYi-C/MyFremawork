@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230a0d12'/%3E%3Cpath d='M2 14L6 6L10 10L14 2' stroke='%23a78bfa' stroke-width='2' fill='none'/%3E%3C/svg%3E" />
+<title>A* Pathfinding Demo</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #0e1116; color: #e6edf3; font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  .wrap { display: flex; flex-direction: column; height: 100%; padding: 16px; gap: 12px; box-sizing: border-box; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .pill { padding: 2px 8px; border-radius: 999px; background: #1f2937; color: #9ca3af; font-size: 12px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button {
+    padding: 6px 14px; border: 1px solid #2a3340; background: #161b22; color: #e6edf3;
+    border-radius: 6px; cursor: pointer; font: inherit;
+  }
+  button:hover { background: #1f2937; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary { background: #2563eb; border-color: #2563eb; }
+  button.primary:hover { background: #1d4ed8; }
+  button.danger { background: #dc2626; border-color: #dc2626; }
+  .stage {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    background: #0a0d12; border: 1px solid #1f2937; border-radius: 8px; overflow: hidden; position: relative;
+  }
+  canvas { image-rendering: pixelated; max-width: 100%; max-height: 100%; background: #0a0d12; }
+  .hud {
+    position: absolute; left: 12px; top: 12px; padding: 8px 10px;
+    background: rgba(10, 13, 18, .78); border: 1px solid #1f2937; border-radius: 6px;
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; line-height: 1.5;
+    min-width: 200px;
+  }
+  .hud .k { color: #9ca3af; }
+  .hud .v { color: #e6edf3; }
+  .rec-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #4ade80; margin-right: 6px; vertical-align: middle; }
+  .rec-dot.on { background: #ef4444; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .3; } }
+  footer { font-size: 12px; color: #6b7280; }
+  kbd { background: #161b22; border: 1px solid #2a3340; border-radius: 4px; padding: 0 6px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>A* 路径搜索可视化</h1>
+    <span class="pill" id="statusPill">就绪</span>
+    <span class="pill" id="recPill" style="display:none"><span class="rec-dot" id="recDot"></span><span id="recText">REC 0.0s</span></span>
+    <div style="flex:1"></div>
+    <div class="row">
+      <button id="btnReset" class="primary">重新生成地图</button>
+      <button id="btnRun">运行搜索</button>
+      <button id="btnRec" class="danger">● 录制并下载 WebM</button>
+    </div>
+  </header>
+
+  <div class="stage">
+    <canvas id="cv" width="800" height="800"></canvas>
+    <div class="hud">
+      <div><span class="k">起点</span> <span class="v" style="color:#22c55e">绿</span> &nbsp; <span class="k">终点</span> <span class="v" style="color:#ef4444">红</span></div>
+      <div><span class="k">开放列表</span> <span class="v" style="color:#facc15">黄</span> &nbsp; <span class="k">关闭列表</span> <span class="v" style="color:#60a5fa">蓝</span></div>
+      <div><span class="k">路径</span> <span class="v" style="color:#a78bfa">紫</span></div>
+      <div style="margin-top:6px; border-top:1px solid #1f2937; padding-top:6px">
+        <div><span class="k">步数</span> <span class="v" id="hudSteps">0</span></div>
+        <div><span class="k">open</span> <span class="v" id="hudOpen">0</span></div>
+        <div><span class="k">closed</span> <span class="v" id="hudClosed">0</span></div>
+        <div><span class="k">f=g+h</span> <span class="v" id="hudF">-</span></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    操作：点画布可切换障碍 · <kbd>空格</kbd> 运行/停止 · <kbd>R</kbd> 重置 · <kbd>W</kbd> 切换起点 · <kbd>E</kbd> 切换终点 · <kbd>●</kbd> 录制
+  </footer>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- 配置 ----------
+  const COLS = 40, ROWS = 40;
+  const CELL = 20; // 800 / 40
+  const H_DIAG = 1.41421356;
+  const H_STRAIGHT = 1.0;
+
+  // ---------- 状态 ----------
+  /** @type {'idle' | 'searching' | 'done' | 'no-path'} */
+  let phase = 'idle';
+  let grid = [];            // 0=空 1=墙
+  let start = { c: 2, r: 2 };
+  let end   = { c: 37, r: 37 };
+  let setting = null;       // 'wall' | 'start' | 'end' | null
+
+  // 搜索可视化状态
+  const cellState = [];     // 0=未访问 1=open(黄) 2=closed(蓝) 3=path(紫)
+  const gScore = [], fScore = [], parent = [];
+  let openHeap = null;      // min-heap 存 {c,r,f}
+  let openSet = new Set();  // 辅助 contains
+  let closedSet = new Set();
+  let current = null;
+  let path = null;
+  let steps = 0;
+  let stepsPerFrame = 1;    // 每帧推进的步数（普通播放速度）
+  let recStepsPerSecond = 30; // 录制时每秒推进的搜索步数
+  let lastFrameTime = 0;
+  let hudF = '-';
+
+  // ---------- Canvas ----------
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  cv.width = COLS * CELL;
+  cv.height = ROWS * CELL;
+
+  // ---------- 工具 ----------
+  const idx = (c, r) => r * COLS + c;
+  const rc  = (i) => ({ c: i % COLS, r: Math.floor(i / COLS) });
+  const inBounds = (c, r) => c >= 0 && c < COLS && r >= 0 && r < ROWS;
+
+  // ---------- 地图生成 ----------
+  function makeGrid() {
+    grid = new Array(COLS * ROWS).fill(0);
+    // 随机障碍物 ~28% 密度，用多段噪声感摆法避免大片空白
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (Math.random() < 0.28) grid[idx(c, r)] = 1;
+      }
+    }
+    // 挖几条横向通道，让 A* 有戏可唱
+    for (let k = 0; k < 4; k++) {
+      const r = Math.floor(Math.random() * ROWS);
+      const c0 = Math.floor(Math.random() * COLS * .4);
+      const len = 8 + Math.floor(Math.random() * 14);
+      for (let i = 0; i < len; i++) {
+        const cc = c0 + i;
+        if (inBounds(cc, r)) grid[idx(cc, r)] = 0;
+      }
+    }
+    for (let k = 0; k < 4; k++) {
+      const c = Math.floor(Math.random() * COLS);
+      const r0 = Math.floor(Math.random() * ROWS * .4);
+      const len = 8 + Math.floor(Math.random() * 14);
+      for (let i = 0; i < len; i++) {
+        const rr = r0 + i;
+        if (inBounds(c, rr)) grid[idx(c, rr)] = 0;
+      }
+    }
+    // 强制清空起终点
+    grid[idx(start.c, start.r)] = 0;
+    grid[idx(end.c, end.r)] = 0;
+  }
+
+  function clearSearch() {
+    cellState.length = 0;
+    for (let i = 0; i < COLS * ROWS; i++) cellState.push(0);
+    gScore.length = 0; fScore.length = 0; parent.length = 0;
+    for (let i = 0; i < COLS * ROWS; i++) {
+      gScore.push(Infinity);
+      fScore.push(Infinity);
+      parent.push(-1);
+    }
+    openHeap = new MinHeap();
+    openSet.clear();
+    closedSet.clear();
+    current = null;
+    path = null;
+    steps = 0;
+    hudF = '-';
+  }
+
+  // ---------- 最小堆 ----------
+  class MinHeap {
+    constructor() { this.a = []; }
+    size() { return this.a.length; }
+    push(x) {
+      this.a.push(x);
+      let i = this.a.length - 1;
+      while (i > 0) {
+        const p = (i - 1) >> 1;
+        if (this.a[p].f <= this.a[i].f) break;
+        const tmp = this.a[p]; this.a[p] = this.a[i]; this.a[i] = tmp;
+        i = p;
+      }
+    }
+    pop() {
+      if (this.a.length === 0) return null;
+      const top = this.a[0];
+      const last = this.a.pop();
+      if (this.a.length > 0) {
+        this.a[0] = last;
+        let i = 0, n = this.a.length;
+        for (;;) {
+          const l = 2 * i + 1, r = 2 * i + 2;
+          let m = i;
+          if (l < n && this.a[l].f < this.a[m].f) m = l;
+          if (r < n && this.a[r].f < this.a[m].f) m = r;
+          if (m === i) break;
+          const tmp = this.a[m]; this.a[m] = this.a[i]; this.a[i] = tmp;
+          i = m;
+        }
+      }
+      return top;
+    }
+  }
+
+  // ---------- 启发式：八方向 octile 距离 ----------
+  function heuristic(c, r) {
+    const dx = Math.abs(c - end.c), dy = Math.abs(r - end.r);
+    return (dx + dy) + (H_DIAG - 2) * Math.min(dx, dy);
+  }
+
+  // ---------- 邻居（8 方向） ----------
+  const N8 = [
+    [-1, 0, H_STRAIGHT], [1, 0, H_STRAIGHT], [0, -1, H_STRAIGHT], [0, 1, H_STRAIGHT],
+    [-1, -1, H_DIAG], [1, -1, H_DIAG], [-1, 1, H_DIAG], [1, 1, H_DIAG],
+  ];
+
+  // ---------- A* 推进 1 步 ----------
+  function step() {
+    if (openHeap.size() === 0) {
+      phase = 'no-path';
+      return false;
+    }
+    const cur = openHeap.pop();
+    const ci = idx(cur.c, cur.r);
+    // stale entry 跳过
+    if (!openSet.has(ci)) {
+      return true; // 跳过，继续
+    }
+    openSet.delete(ci);
+    closedSet.add(ci);
+    cellState[ci] = 2;
+    current = { c: cur.c, r: cur.r };
+    steps++;
+    hudF = cur.f.toFixed(1);
+
+    if (cur.c === end.c && cur.r === end.r) {
+      // 重建路径
+      const p = [];
+      let k = ci;
+      while (k !== -1) {
+        const { c, r } = rc(k);
+        p.push({ c, r });
+        k = parent[k];
+      }
+      p.reverse();
+      path = p;
+      phase = 'done';
+      return false;
+    }
+
+    for (const [dc, dr, w] of N8) {
+      const nc = cur.c + dc, nr = cur.r + dr;
+      if (!inBounds(nc, nr)) continue;
+      const ni = idx(nc, nr);
+      if (grid[ni] === 1) continue;
+      if (closedSet.has(ni)) continue;
+      // 防止穿墙角（两个直角邻居都是墙时不让走对角）
+      if (dc !== 0 && dr !== 0) {
+        if (grid[idx(cur.c + dc, cur.r)] === 1 && grid[idx(cur.c, cur.r + dr)] === 1) continue;
+      }
+      const tentativeG = gScore[ci] + w;
+      if (tentativeG < gScore[ni]) {
+        parent[ni] = ci;
+        gScore[ni] = tentativeG;
+        const f = tentativeG + heuristic(nc, nr);
+        fScore[ni] = f;
+        openHeap.push({ c: nc, r: nr, f });
+        openSet.add(ni);
+        if (cellState[ni] !== 3) cellState[ni] = 1; // open
+      }
+    }
+    return true;
+  }
+
+  function startSearch() {
+    if (phase === 'searching') return;
+    if (phase === 'done' || phase === 'no-path') {
+      // 重新跑，保留地图
+    }
+    clearSearch();
+    phase = 'searching';
+    const si = idx(start.c, start.r);
+    gScore[si] = 0;
+    const f0 = heuristic(start.c, start.r);
+    fScore[si] = f0;
+    openHeap.push({ c: start.c, r: start.r, f: f0 });
+    openSet.add(si);
+    cellState[si] = 1;
+    hudF = f0.toFixed(1);
+    setStatus('搜索中…');
+  }
+
+  // ---------- 渲染 ----------
+  function draw() {
+    ctx.fillStyle = '#0a0d12';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+
+    // 网格格子
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const i = idx(c, r);
+        const s = cellState[i];
+        if (grid[i] === 1) {
+          ctx.fillStyle = '#1f2937';
+          ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+          // 简单的方块感
+          ctx.fillStyle = '#374151';
+          ctx.fillRect(c * CELL + 2, r * CELL + 2, CELL - 4, CELL - 4);
+        } else {
+          // 背景
+          if (s === 1)        ctx.fillStyle = '#facc15';      // open
+          else if (s === 2)   ctx.fillStyle = '#60a5fa';      // closed
+          else if (s === 3)   ctx.fillStyle = '#a78bfa';      // path
+          else                ctx.fillStyle = '#111827';      // empty
+          ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+
+          // 当前节点加高亮
+          if (current && current.c === c && current.r === r) {
+            ctx.fillStyle = 'rgba(255,255,255,0.25)';
+            ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+          }
+        }
+      }
+    }
+
+    // 网格线
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    for (let c = 0; c <= COLS; c++) {
+      ctx.beginPath(); ctx.moveTo(c * CELL + .5, 0); ctx.lineTo(c * CELL + .5, cv.height); ctx.stroke();
+    }
+    for (let r = 0; r <= ROWS; r++) {
+      ctx.beginPath(); ctx.moveTo(0, r * CELL + .5); ctx.lineTo(cv.width, r * CELL + .5); ctx.stroke();
+    }
+
+    // 起终点
+    drawNode(start.c, start.r, '#22c55e', 'S');
+    drawNode(end.c,   end.r,   '#ef4444', 'E');
+
+    // HUD 文本
+    document.getElementById('hudSteps').textContent = steps;
+    document.getElementById('hudOpen').textContent = openSet.size;
+    document.getElementById('hudClosed').textContent = closedSet.size;
+    document.getElementById('hudF').textContent = hudF;
+  }
+
+  function drawNode(c, r, color, label) {
+    const x = c * CELL, y = r * CELL;
+    ctx.fillStyle = color;
+    ctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
+    ctx.fillStyle = '#0a0d12';
+    ctx.font = 'bold 11px ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + CELL / 2, y + CELL / 2 + 1);
+  }
+
+  // ---------- 录制 ----------
+  let recorder = null;
+  let recChunks = [];
+  let recStart = 0;
+  let recTimer = null;
+  const REC_SECONDS = 28; // < 30s
+  const REC_FPS = 30;
+  const REC_STEPS_PER_FRAME = 1;   // 录制时每帧推进多少步搜索
+  const REC_HOLD_AFTER_DONE = 6;   // 找到路径后再停留多少秒（展示最终路径）
+  const REC_STEPS_PER_SECOND = 25; // 录制时每秒推进多少步搜索（30fps 录制）
+
+  function setStatus(s) { document.getElementById('statusPill').textContent = s; }
+
+  function startRecording() {
+    if (recorder) return;
+    // 录制前先暂停主循环速度档，使用专门的录制档
+    stepsPerFrame = REC_STEPS_PER_FRAME;
+    const stream = cv.captureStream(REC_FPS);
+    recChunks = [];
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+      ? 'video/webm;codecs=vp9'
+      : (MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm');
+    recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000 });
+    recorder.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
+    recorder.onstop = () => {
+      const blob = new Blob(recChunks, { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      a.download = `astar-${ts}.webm`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setStatus('已保存 WebM');
+      stepsPerFrame = 1; // 恢复默认
+    };
+    recorder.start(100);
+    recStart = performance.now();
+    document.getElementById('recPill').style.display = '';
+    document.getElementById('recDot').classList.add('on');
+    document.getElementById('btnRec').textContent = '■ 停止';
+    setStatus('录制中…');
+    recTimer = setInterval(() => {
+      const t = (performance.now() - recStart) / 1000;
+      document.getElementById('recText').textContent = `REC ${t.toFixed(1)}s`;
+    }, 100);
+
+    // 自动调度：清状态 → 跑搜索 → 完成后停留 REC_HOLD_AFTER_DONE 秒 → 停止
+    clearSearch();
+    startSearch();
+    setTimeout(() => { if (recorder) { recorder.stop(); } }, REC_SECONDS * 1000);
+  }
+
+  function stopRecording() {
+    if (!recorder) return;
+    recorder.stop();
+  }
+
+  // ---------- 交互 ----------
+  function setupCanvasInput() {
+    function pickCell(e) {
+      const rect = cv.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (cv.width / rect.width);
+      const y = (e.clientY - rect.top) * (cv.height / rect.height);
+      const c = Math.floor(x / CELL), r = Math.floor(y / CELL);
+      return { c, r };
+    }
+    cv.addEventListener('mousedown', e => {
+      if (phase === 'searching') return;
+      const { c, r } = pickCell(e);
+      if (!inBounds(c, r)) return;
+      if (setting === 'start') {
+        if (grid[idx(c, r)] === 0 && !(c === end.c && r === end.r)) start = { c, r };
+      } else if (setting === 'end') {
+        if (grid[idx(c, r)] === 0 && !(c === start.c && r === start.r)) end = { c, r };
+      } else {
+        if ((c === start.c && r === start.r) || (c === end.c && r === end.r)) return;
+        grid[idx(c, r)] = grid[idx(c, r)] ? 0 : 1;
+      }
+    });
+  }
+
+  // ---------- 主循环 ----------
+  let _acc = 0; // 步进累加器（按时间控制速度）
+  function loop(t) {
+    if (phase === 'searching') {
+      // 根据目标步/秒计算本帧该推进多少步
+      const target = recorder ? REC_STEPS_PER_SECOND : 60; // 普通播放默认 60 步/秒
+      const want = (target / 60) + _acc;
+      const todo = Math.floor(want);
+      _acc = want - todo;
+      for (let k = 0; k < todo; k++) {
+        if (!step()) break;
+      }
+      if (phase === 'done') {
+        if (path) for (const p of path) cellState[idx(p.c, p.r)] = 3;
+        setStatus(`找到路径 (${path ? path.length : 0} 步)`);
+      } else if (phase === 'no-path') {
+        setStatus('无路可达');
+      }
+    }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- 按钮 ----------
+  document.getElementById('btnReset').addEventListener('click', () => {
+    phase = 'idle';
+    makeGrid();
+    clearSearch();
+    setStatus('已重置');
+  });
+  document.getElementById('btnRun').addEventListener('click', () => {
+    if (phase === 'searching') return;
+    startSearch();
+  });
+  document.getElementById('btnRec').addEventListener('click', () => {
+    if (recorder) stopRecording(); else startRecording();
+  });
+
+  // 键盘
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); document.getElementById('btnRun').click(); }
+    else if (e.key === 'r' || e.key === 'R') { document.getElementById('btnReset').click(); }
+    else if (e.key === 'w' || e.key === 'W') { setting = (setting === 'start' ? null : 'start'); setStatus('点击设置起点'); }
+    else if (e.key === 'e' || e.key === 'E') { setting = (setting === 'end' ? null : 'end'); setStatus('点击设置终点'); }
+  });
+
+  // ---------- 启动 ----------
+  makeGrid();
+  clearSearch();
+  setupCanvasInput();
+  // 画一帧静态初始图（搜索前），用户可先看初始地图
+  draw();
+  requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

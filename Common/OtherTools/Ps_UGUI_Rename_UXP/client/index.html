@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>UGUI 图层命名工具</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!--
+    UXP 没有 CSInterface.js — 通信走 UXP 内置的 `photoshop` 模块
+    以及对 host.js 的 require()。见 client/index.js 顶部。
+  -->
+
+  <div class="container">
+    <div class="panel">
+      <div class="panel-title">选项</div>
+      <label>
+        <input type="checkbox" id="cbReplace" checked> 替换已有前缀
+      </label>
+      <label>
+        <input type="checkbox" id="cbLower" checked> 名称转小写
+      </label>
+      <label>
+        <input type="checkbox" id="cbSpace" checked> 空格替换为下划线
+      </label>
+      <label>
+        <input type="checkbox" id="cbRecursive"> 递归处理图层组
+      </label>
+    </div>
+    <div class="panel">
+      <div class="panel-title">常用前缀</div>
+      <div class="button-grid">
+        <button data-prefix="btn_">btn_ 按钮</button>
+        <button data-prefix="img_">img_ 图片</button>
+        <button data-prefix="txt_">txt_ 文本</button>
+        <button data-prefix="export_">export_ 仅导出</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">自定义前缀</div>
+      <div class="custom-row">
+        <input type="text" id="customPrefix" placeholder="例如: my_">
+        <button id="applyCustom">应用</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">九宫格</div>
+      <div class="slice-grid">
+        <label>L (左)<input type="number" id="sliceL" value="10" min="0" step="1"></label>
+        <label>T (上)<input type="number" id="sliceT" value="10" min="0" step="1"></label>
+        <label>R (右)<input type="number" id="sliceR" value="10" min="0" step="1"></label>
+        <label>B (下)<input type="number" id="sliceB" value="10" min="0" step="1"></label>
+      </div>
+      <div class="slice-autoprefix">
+        <label>
+          <input type="checkbox" id="cbAutoPrefix" checked> 自动补前缀
+        </label>
+        <select id="autoPrefixSel">
+          <option value="img_" selected>img_</option>
+          <option value="btn_">btn_</option>
+        </select>
+      </div>
+      <div class="slice-buttons">
+        <button id="apply9Slice">应用 9-slice</button>
+        <button id="remove9Slice" class="danger">移除 9-slice</button>
+      </div>
+    </div>
+    <div class="panel" id="fontPanel">
+      <div class="panel-title">字体标记</div>
+      <div class="button-grid" id="fontTagGrid"></div>
+      <div class="custom-row" style="margin-top:6px">
+        <input type="text" id="customFontTag" placeholder="自定义 Tag, 例如: H1">
+        <button id="applyCustomFontTag">应用</button>
+      </div>
+      <button id="removeFontTag" class="danger" style="margin-top:4px;width:100%">移除字体后缀</button>
+    </div>
+  </div>
+  
+  <script src="font_mapping.js"></script>
+  <script src="index.js"></script>
+</body>
+</html>

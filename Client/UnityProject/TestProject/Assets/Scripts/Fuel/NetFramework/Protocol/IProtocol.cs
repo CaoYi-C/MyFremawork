@@ -59,6 +59,11 @@ namespace Fuel.NetFramework.Protocol
         event Action<string> OnError;
 
         /// <summary>
+        /// 驱动协议内部事件派发。必须在 Unity 主线程 Update 调用。
+        /// </summary>
+        void Update();
+
+        /// <summary>
         /// 连接到服务器
         /// </summary>
         /// <param name="host">服务器地址</param>

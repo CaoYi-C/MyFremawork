@@ -1,4 +1,4 @@
-// PSDImporterSettings.cs
+﻿// PSDImporterSettings.cs
 // ScriptableObject configuration for the PSD importer.
 // Lives at Assets/Editor/PSDImporter/Resources/PSDImporterSettings.asset
 // (or any user-chosen path) and is loaded on demand.
@@ -6,7 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Manager.UIManager;
+using Fuel.Manager.UIManager;
 using UnityEngine;
 
 namespace PSDImporter.Editor
@@ -24,7 +24,7 @@ namespace PSDImporter.Editor
         public string psdExportRoot = "PSDExport";
 
         [Header("Python")]
-        [Tooltip("Path to the Python executable used to convert PSD → JSON. " +
+        [Tooltip("Path to the Python executable used to convert PSD �?JSON. " +
                  "Leave as 'python' to use whatever is on PATH. " +
                  "On Windows you may need a full path like " +
                  "'C:\\Python313\\python.exe' if PATH doesn't resolve.")]
@@ -76,7 +76,7 @@ namespace PSDImporter.Editor
                  "extension). If not found, fallbackFont is used.")]
         public string fontSearchRoot = "Assets";
 
-        [Tooltip("Font tag → Font asset. When a txt_ layer has a font " +
+        [Tooltip("Font tag �?Font asset. When a txt_ layer has a font " +
                  "suffix (e.g. txt_title_H1), the importer looks up 'H1' " +
                  "here and assigns the matching font. If no suffix or not " +
                  "found, fallbackFont is used.")]

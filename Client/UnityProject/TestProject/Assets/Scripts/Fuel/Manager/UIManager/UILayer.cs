@@ -1,4 +1,4 @@
-namespace Manager.UIManager
+namespace Fuel.Manager.UIManager
 {
     public enum UILayer
     {

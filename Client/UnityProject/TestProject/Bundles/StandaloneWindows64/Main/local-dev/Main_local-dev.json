@@ -1,0 +1,98 @@
+{
+    "FileVersion": 1,
+    "EnableAddressable": true,
+    "SupportExtensionless": true,
+    "LocationToLower": false,
+    "IncludeAssetGuid": false,
+    "ReplaceAssetPathWithAddress": false,
+    "OutputNameStyle": 2,
+    "BuildBundleType": 2,
+    "BuildPipeline": "ScriptableBuildPipeline",
+    "PackageName": "Main",
+    "PackageVersion": "local-dev",
+    "PackageNote": "local startup pipeline test",
+    "AssetList": [
+        {
+            "Address": "HotUpdate.dll",
+            "AssetPath": "Assets/AssetsPackage/Main/Code/HotUpdate.dll.bytes",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "test_textitems",
+            "AssetPath": "Assets/AssetsPackage/Main/Code/test_textitems.bytes",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "RedDotConfigAsset",
+            "AssetPath": "Assets/AssetsPackage/Main/RedDot/RedDotConfigAsset.asset",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 1,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "SampleScene",
+            "AssetPath": "Assets/AssetsPackage/Main/Scene/SampleScene.unity",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 2,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "TestPanel",
+            "AssetPath": "Assets/AssetsPackage/Main/UIPrefab/TestPanel.prefab",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 3,
+            "DependentBundleIDs": []
+        }
+    ],
+    "BundleList": [
+        {
+            "BundleName": "assets_assetspackage_main_code.bundle",
+            "UnityCrc": 3509452078,
+            "FileHash": "fdf9908a84c0add50eb5abf4a3f40bbb",
+            "FileCrc": 3184428096,
+            "FileSize": 3856,
+            "IsEncrypted": false,
+            "Tags": [],
+            "DependentBundleIDs": []
+        },
+        {
+            "BundleName": "assets_assetspackage_main_reddot.bundle",
+            "UnityCrc": 3227885676,
+            "FileHash": "83c1ac461c2517e9fe553bb754c0467c",
+            "FileCrc": 3314612779,
+            "FileSize": 3389,
+            "IsEncrypted": false,
+            "Tags": [],
+            "DependentBundleIDs": []
+        },
+        {
+            "BundleName": "assets_assetspackage_main_scene.bundle",
+            "UnityCrc": 2746793057,
+            "FileHash": "4f7b947d52f38a1acf087ddf19000207",
+            "FileCrc": 2466990795,
+            "FileSize": 119947,
+            "IsEncrypted": false,
+            "Tags": [],
+            "DependentBundleIDs": []
+        },
+        {
+            "BundleName": "assets_assetspackage_main_uiprefab.bundle",
+            "UnityCrc": 3607146506,
+            "FileHash": "84813a771ad0efb1796073881cdd6b57",
+            "FileCrc": 2900810136,
+            "FileSize": 9444,
+            "IsEncrypted": false,
+            "Tags": [],
+            "DependentBundleIDs": []
+        }
+    ]
+}

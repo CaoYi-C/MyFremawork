@@ -1,0 +1,27 @@
+{
+  "id": "com.ugui.rename",
+  "name": "UGUI 图层命名工具",
+  "version": "2.0.0",
+  "main": "client/index.html",
+  "host": {
+    "app": "PS",
+    "minVersion": "23.0.0"
+  },
+  "manifestVersion": 5,
+  "entrypoints": [
+    {
+      "type": "panel",
+      "id": "com.ugui.rename.panel",
+      "label": {
+        "default": "UGUI 图层命名工具"
+      },
+      "minimumSize": { "width": 280, "height": 450 },
+      "preferredDockedSize": { "width": 280, "height": 520 }
+    }
+  ],
+  "requiredPermissions": {
+    "localFileSystem": "plugin",
+    "clipboard": "read",
+    "network": { "domains": [] }
+  }
+}

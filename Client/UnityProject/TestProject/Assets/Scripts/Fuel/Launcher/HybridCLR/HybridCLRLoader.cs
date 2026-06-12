@@ -6,7 +6,7 @@ using Fuel.Launcher.Config;
 using UnityEngine;
 using YooAsset;
 
-#if !UNITY_EDITOR
+#if !UNITY_EDITOR && HYBRIDCLR
 using HybridCLR;
 #endif
 
@@ -26,7 +26,7 @@ namespace Fuel.Launcher.HybridCLR
                     continue;
 
                 var bytes = await LoadBytesAsync(localConfig.packageName, path, cancellationToken);
-#if !UNITY_EDITOR
+#if !UNITY_EDITOR && HYBRIDCLR
                 RuntimeApi.LoadMetadataForAOTAssembly(bytes, HomologousImageMode.SuperSet);
 #endif
             }
@@ -51,11 +51,22 @@ namespace Fuel.Launcher.HybridCLR
         {
             var package = YooAssets.GetPackage(packageName);
             var handle = package.LoadAssetAsync<TextAsset>(path);
-            await handle.ToUniTask(cancellationToken: cancellationToken);
-            var asset = handle.GetAssetObject<TextAsset>();
-            if (asset == null)
-                throw new InvalidOperationException($"Load bytes failed: {path}");
-            return asset.bytes;
+            try
+            {
+                await handle.ToUniTask(cancellationToken: cancellationToken);
+                var asset = handle.GetAssetObject<TextAsset>();
+                if (asset == null)
+                    throw new InvalidOperationException($"Load bytes failed: {path}");
+
+                var bytes = asset.bytes;
+                var result = new byte[bytes.Length];
+                Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
+                return result;
+            }
+            finally
+            {
+                handle.Release();
+            }
         }
     }
 }

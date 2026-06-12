@@ -137,7 +137,12 @@ namespace Fuel.AssetManager.AssetsPools
         internal GameObject GetSync(string assetName, string groupName)
         {
             if (!_isInit)
+            {
                 _isInit = InitSync(assetName, groupName);
+                if (!_isInit)
+                    return null;
+            }
+
             if (_pool.Count > 0)
             {
                 GameObject go = _pool.Pop();

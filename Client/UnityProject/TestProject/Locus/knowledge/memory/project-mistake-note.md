@@ -11,7 +11,7 @@ readOnly: false
 aiMaintained: true
 explicitMaintenanceRules: true
 createdAt: 1778427694230
-updatedAt: 1780367172301
+updatedAt: 1781255547296
 ---
 
 # project-mistake-note
@@ -28,4 +28,5 @@ Remove outdated issues, non-reproducible issues, and unsupported guesses
 - `LocalDataManager` 继承非 MonoBehaviour 的 `Singleton<T>`，不能添加 `OnApplicationPause` 或 override `OnApplicationQuit`；退出刷新应使用 `Application.quitting` 注册。
 - YooAsset 版本的下载进度事件类型是 `DownloadProgressChangedEventArgs`，不要误用旧/其他版本的 `DownloadUpdateData`。
 - `GameObjectPool.InitSync/InitAsync` 必须校验 YooAsset `AssetHandle` 有效且成功后再 `InstantiateSync/Async`；加载地址无效时直接实例化会触发空引用。
+- YooAsset `Initialize()` 会调用 `DontDestroyOnLoad`，不能在 Edit Mode 的 `unity_execute` 中直接跑启动管线；应进入 Play Mode 验证。若已有系统初始化过 `Main` 包，启动资源更新服务需复用已成功初始化的包，避免二次 `InitializePackageAsync` 报错。
 <!-- locus:body:end -->

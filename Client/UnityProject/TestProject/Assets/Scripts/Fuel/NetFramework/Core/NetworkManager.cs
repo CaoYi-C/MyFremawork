@@ -182,6 +182,8 @@ namespace Fuel.NetFramework.Core
 
         private void Update()
         {
+            Protocol?.Update();
+
             // 处理连接/断开/错误事件（从 Socket 线程转发到主线程）
             while (_mainThreadEventQueue.TryDequeue(out Action eventAction))
             {

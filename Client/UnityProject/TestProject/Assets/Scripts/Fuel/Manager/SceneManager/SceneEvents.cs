@@ -30,6 +30,16 @@ namespace Fuel.Scene
     }
 
     /// <summary>
+    /// 场景加载失败事件
+    /// </summary>
+    public struct Scene_LoadFailedEvent : IEventMessage
+    {
+        public string SceneId;
+        public bool IsMainScene;
+        public string Error;
+    }
+
+    /// <summary>
     /// 场景开始卸载事件
     /// </summary>
     public struct Scene_UnloadStartEvent : IEventMessage

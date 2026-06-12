@@ -297,7 +297,28 @@ namespace Fuel.LocalData
                 Directory.CreateDirectory(_directory);
             }
 
-            File.WriteAllBytes(GetFilePath(key), Encode(value));
+            var path = GetFilePath(key);
+            var tmpPath = path + ".tmp";
+
+            try
+            {
+                File.WriteAllBytes(tmpPath, Encode(value));
+                if (File.Exists(path))
+                {
+                    File.Replace(tmpPath, path, null, true);
+                }
+                else
+                {
+                    File.Move(tmpPath, path);
+                }
+            }
+            finally
+            {
+                if (File.Exists(tmpPath))
+                {
+                    File.Delete(tmpPath);
+                }
+            }
         }
 
         public bool TryLoadString(string key, out string value)

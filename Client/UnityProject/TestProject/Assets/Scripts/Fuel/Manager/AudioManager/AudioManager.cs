@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using UnityEngine;
+using Fuel.AssetManager;
 using Fuel.Singleton;
 
 namespace Fuel.Manager.AudioManager
@@ -10,6 +10,7 @@ namespace Fuel.Manager.AudioManager
     public sealed partial class AudioManager : Singleton<AudioManager>
     {
         private const string AudioPath ="Audio/";
+        private const string AudioAssetGroupName = "AudioManager";
         /// <summary>
         /// 所有缓存的clip
         /// </summary>
@@ -164,8 +165,8 @@ namespace Fuel.Manager.AudioManager
                 source.Value.Dispose();
             }
             _goSources.Clear();
-            _allClips.Clear();
-            Resources.UnloadUnusedAssets().ToUniTask().Forget();
+            ClearClip(true);
+            AssetsLoadManager.Instance.ReleaseAllByGroup(AudioAssetGroupName);
         }
         /// <summary>
         /// 获取audioClip文件
@@ -202,8 +203,7 @@ namespace Fuel.Manager.AudioManager
         /// <param name="clipName">资源相对路径</param>
         private AudioClip GetAudioClip(string clipName)
         {
-            string audioPath = AudioPath + clipName;
-            AudioClip audioClipNew = Resources.Load<AudioClip>(audioPath);
+            AudioClip audioClipNew = AssetsLoadManager.Instance.LoadSync<AudioClip>(clipName, AudioAssetGroupName);
             if (audioClipNew != null)
             {
                 _allClips.TryAdd(clipName, audioClipNew);
@@ -260,10 +260,10 @@ namespace Fuel.Manager.AudioManager
             switch (type)
             {
                 case AudioType.BGM:
-                    _bgm.Pause(fadeTime);
+                    _bgm?.Pause(fadeTime);
                     break;
                 case AudioType.BGS:
-                    _bgsGoAudioSource.Pause(fadeTime);
+                    _bgsGoAudioSource?.Pause(fadeTime);
                     break;
                 case AudioType.ME:
                 case AudioType.SE:
@@ -284,10 +284,10 @@ namespace Fuel.Manager.AudioManager
             switch (type)
             {
                 case AudioType.BGM:
-                    _bgm.UnPause(fadeTime);
+                    _bgm?.UnPause(fadeTime);
                     break;
                 case AudioType.BGS:
-                    _bgsGoAudioSource.UnPause(fadeTime);
+                    _bgsGoAudioSource?.UnPause(fadeTime);
                     break;
                 case AudioType.ME:
                 case AudioType.SE:
@@ -308,16 +308,17 @@ namespace Fuel.Manager.AudioManager
             switch (type)
             {
                 case AudioType.BGM:
-                    _bgm.Stop(fadeTime);
+                    _bgm?.Stop(fadeTime);
                     break;
                 case AudioType.BGS:
-                    _bgsGoAudioSource.StopAll(fadeTime);
+                    _bgsGoAudioSource?.StopAll(fadeTime);
                     break;
                 case AudioType.ME:
                 case AudioType.SE:
+                    int soundRootId = _soundSoundEffectRoot != null ? _soundSoundEffectRoot.GetInstanceID() : 0;
                     foreach (var item in _goSources)
                     {
-                        if (item.Key == _soundSoundEffectRoot.GetInstanceID())
+                        if (_soundSoundEffectRoot != null && item.Key == soundRootId)
                         {
                             item.Value.ClearRes(3);
                         }
@@ -358,21 +359,29 @@ namespace Fuel.Manager.AudioManager
         }
 
         private readonly List<string> _tmpClipKeys = new List<string>();
-        private void ClearClip()
+        private void ClearClip(bool includeBgm = false)
         {
             _tmpClipKeys.Clear();
             foreach (var clipPath in _allClips)
             {
-                if (clipPath.Key != _bgmPath)
+                if (includeBgm || clipPath.Key != _bgmPath)
                 {
                     _tmpClipKeys.Add(clipPath.Key);
                 }
             }
             foreach (var clipPath in _tmpClipKeys)
             {
-                GameObject.Destroy(_allClips[clipPath]);
-                _allClips.Remove(clipPath);
+                ReleaseClip(clipPath);
             }
+        }
+
+        private void ReleaseClip(string clipPath)
+        {
+            if (string.IsNullOrEmpty(clipPath)) return;
+            if (!_allClips.TryGetValue(clipPath, out var clip)) return;
+
+            AssetsLoadManager.Instance.Recycle(clip, AudioAssetGroupName);
+            _allClips.Remove(clipPath);
         }
         #region 音频控制公共管理接口
 
@@ -431,11 +440,19 @@ namespace Fuel.Manager.AudioManager
         /// <param name="fadeFinish">完成回调</param>
         public void StopBGM(float fadeSeconds, Action fadeFinish = null)
         {
+            string stoppedPath = _bgmPath;
             _bgmPath = string.Empty;
             if (_bgm != null)
-                _bgm.Stop(fadeSeconds, fadeFinish);
+            {
+                _bgm.Stop(fadeSeconds, () =>
+                {
+                    ReleaseClip(stoppedPath);
+                    fadeFinish?.Invoke();
+                });
+            }
             else
             {
+                ReleaseClip(stoppedPath);
                 fadeFinish?.Invoke();
             }
         }

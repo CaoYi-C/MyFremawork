@@ -1,0 +1,20 @@
+﻿2026-06-12 16:52:53.948 [INFO] Building package 'Main' with pipeline 'ScriptableBuildPipeline'.
+2026-06-12 16:52:53.949 [INFO] --------------------------------------------->TaskPrepare<--------------------------------------------
+2026-06-12 16:52:53.951 [WARN] [ErrorCode131] Builtin shaders bundle name is null. It will cause resource redundancy.
+2026-06-12 16:52:53.963 [INFO] Create pipeline output directory: 'Bundles/Android/Main/OutputCache'.
+2026-06-12 16:52:53.964 [INFO] TaskPrepare completed in 0 seconds.
+2026-06-12 16:52:53.964 [INFO] --------------------------------------------->TaskGetBuildMap<--------------------------------------------
+2026-06-12 16:54:20.129 [WARN] [ErrorCode201] Found unreferenced asset and removed it: 'Assets/AssetsPackage/Depend/Font/PlaywriteGBJ-Italic-VariableFont_wght.ttf'.
+2026-06-12 16:54:20.131 [WARN] [ErrorCode201] Found unreferenced asset and removed it: 'Assets/AssetsPackage/Depend/Font/PlaywriteGBJ-VariableFont_wght.ttf'.
+2026-06-12 16:54:20.131 [WARN] [ErrorCode201] Found unreferenced asset and removed it: 'Assets/AssetsPackage/Depend/Mat/TestCube.mat'.
+2026-06-12 16:54:20.133 [WARN] [ErrorCode201] Found unreferenced asset and removed it: 'Assets/AssetsPackage/Depend/Model/222.fbx'.
+2026-06-12 16:54:20.133 [WARN] [ErrorCode201] Found unreferenced asset and removed it: 'Assets/AssetsPackage/Depend/Shader/Custom_FrostedGlass.mat'.
+2026-06-12 16:54:20.134 [WARN] [ErrorCode201] Found unreferenced asset and removed it: 'Assets/AssetsPackage/Depend/Shader/FrostedGlass.shader'.
+2026-06-12 16:54:20.136 [INFO] TaskGetBuildMap completed in 86 seconds.
+2026-06-12 16:54:20.136 [INFO] --------------------------------------------->TaskBuilding<--------------------------------------------
+2026-06-12 16:54:43.214 [INFO] Total build process time: 86 seconds.
+2026-06-12 16:54:43.216 [ERROR] Build pipeline 'ScriptableBuildPipeline' build failed.
+2026-06-12 16:54:43.217 [ERROR] Error occurred in build task 'TaskBuilding_SBP'.
+2026-06-12 16:54:43.217 [ERROR] System.InvalidOperationException: [ErrorCode300] UnityEngine build failed. ReturnCode: Error.
+  at YooAsset.Editor.TaskBuilding_SBP.YooAsset.Editor.IBuildTask.Run (YooAsset.Editor.BuildContext context) [0x00090] in .\Library\PackageCache\com.tuyoogame.yooasset@3.0.1-beta\Editor\BundleBuilder\BuildPipeline\ScriptableBuildPipeline\BuildTasks\TaskBuilding_SBP.cs:59 
+  at YooAsset.Editor.BuildRunner.Run (System.Collections.Generic.List`1[T] pipeline, YooAsset.Editor.BuildContext context) [0x00086] in .\Library\PackageCache\com.tuyoogame.yooasset@3.0.1-beta\Editor\BundleBuilder\BuildSystem\BuildRunner.cs:46 

@@ -164,7 +164,7 @@ namespace Fuel.AssetManager
                 return value.GetAssetObject<T>();
             }
 
-            int version = ++_loadVersion;
+            int version = _loadVersion;
             var (obj, handle) = await AssetsManager.Instance.LoadAsyncWithHandle<T>(path);
             if (version != _loadVersion)
             {
@@ -193,7 +193,7 @@ namespace Fuel.AssetManager
             {
                 return value.AssetObject;
             }
-            int version = ++_loadVersion;
+            int version = _loadVersion;
             var (obj, handle) = await AssetsManager.Instance.LoadAsyncWithHandle(path,type);
             if (version != _loadVersion)
             {
@@ -219,7 +219,7 @@ namespace Fuel.AssetManager
             {
                 return value;
             }
-            int version = ++_loadVersion;
+            int version = _loadVersion;
             var (_, handle) = await AssetsManager.Instance.LoadAsyncWithHandle<T>(path);
             if (version != _loadVersion)
             {
@@ -246,7 +246,7 @@ namespace Fuel.AssetManager
                 return value;
             }
 
-            int version = ++_loadVersion;
+            int version = _loadVersion;
             var (_, handle) = await AssetsManager.Instance.LoadAsyncWithHandle(path,type);
             if (version != _loadVersion)
             {
@@ -274,7 +274,7 @@ namespace Fuel.AssetManager
                 return value.GetSubAssetObject<Sprite>(path);
             }
 
-            int version = ++_loadVersion;
+            int version = _loadVersion;
             var (sprite, subHandle) = await AssetsManager.Instance.LoadSubAsyncWithHandle<Sprite>(mainPath, path);
             if (version != _loadVersion)
             {

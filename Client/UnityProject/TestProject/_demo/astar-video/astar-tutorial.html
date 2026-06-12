@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230a0d12'/%3E%3Cpath d='M2 14L6 6L10 10L14 2' stroke='%23a78bfa' stroke-width='2' fill='none'/%3E%3C/svg%3E" />
+<title>A* 算法详解 · 一步一步看明白</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #0e1116; color: #e6edf3; font: 14px/1.6 -apple-system, "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .wrap { display: grid; grid-template-columns: 1fr 420px; height: 100%; gap: 0; }
+  .stage { background: #0a0d12; display: flex; align-items: center; justify-content: center; position: relative; border-right: 1px solid #1f2937; }
+  canvas { image-rendering: pixelated; background: #0a0d12; }
+  .hud { position: absolute; left: 16px; top: 16px; padding: 10px 12px; background: rgba(10,13,18,.85); border: 1px solid #1f2937; border-radius: 8px; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; min-width: 200px; }
+  .hud .row { display: flex; justify-content: space-between; gap: 8px; }
+  .hud .k { color: #9ca3af; }
+  .hud .v { color: #e6edf3; font-weight: 600; }
+  .hud .v.g { color: #facc15; }
+  .hud .v.h { color: #60a5fa; }
+  .hud .v.f { color: #a78bfa; }
+  .rec-pill { position: absolute; right: 16px; top: 16px; padding: 4px 10px; background: rgba(220,38,38,.2); border: 1px solid #dc2626; border-radius: 999px; font-size: 12px; display: none; }
+  .rec-pill .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; margin-right: 6px; vertical-align: middle; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .3; } }
+
+  .panel { display: flex; flex-direction: column; background: #0e1116; height: 100%; overflow: hidden; }
+  .panel-header { padding: 14px 18px; border-bottom: 1px solid #1f2937; }
+  .panel-header h1 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+  .panel-header .sub { color: #9ca3af; font-size: 12px; }
+
+  .steps { flex: 1; overflow-y: auto; padding: 12px 14px; }
+  .step { padding: 12px 14px; border: 1px solid #1f2937; border-radius: 8px; margin-bottom: 10px; background: #0a0d12; cursor: pointer; transition: all .15s; }
+  .step:hover { border-color: #374151; }
+  .step.active { border-color: #a78bfa; background: #15121f; box-shadow: 0 0 0 1px #a78bfa inset; }
+  .step .num { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center; background: #1f2937; color: #9ca3af; border-radius: 50%; font-size: 12px; font-weight: 600; margin-right: 8px; }
+  .step.active .num { background: #a78bfa; color: #0a0d12; }
+  .step .title { font-size: 14px; font-weight: 600; }
+  .step .body { margin-top: 8px; color: #cbd5e1; font-size: 13px; line-height: 1.7; }
+  .step code { background: #161b22; padding: 1px 6px; border-radius: 4px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #facc15; }
+  .step .formula { display: block; margin: 8px 0; padding: 8px 12px; background: #161b22; border-left: 3px solid #a78bfa; border-radius: 0 4px 4px 0; font-family: ui-monospace, Consolas, monospace; font-size: 14px; color: #e6edf3; }
+  .step .legend { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 8px; font-size: 12px; }
+  .step .legend .it { display: flex; align-items: center; gap: 4px; }
+  .step .legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; }
+  .step .bullet { margin-top: 4px; padding-left: 18px; position: relative; }
+  .step .bullet::before { content: "•"; position: absolute; left: 6px; color: #6b7280; }
+
+  .controls { padding: 12px 18px; border-top: 1px solid #1f2937; display: flex; gap: 8px; flex-wrap: wrap; }
+  button { padding: 8px 14px; border: 1px solid #2a3340; background: #161b22; color: #e6edf3; border-radius: 6px; cursor: pointer; font: inherit; }
+  button:hover { background: #1f2937; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary { background: #2563eb; border-color: #2563eb; }
+  button.primary:hover { background: #1d4ed8; }
+  button.danger { background: #dc2626; border-color: #dc2626; }
+  button:fullscreen, .ctrl-spacer { flex: 1; }
+  .nav-btns { display: flex; gap: 4px; }
+  .nav-btns button { padding: 6px 10px; min-width: 36px; }
+
+  .footer { padding: 6px 18px; border-top: 1px solid #1f2937; color: #6b7280; font-size: 11px; }
+  .footer kbd { background: #161b22; border: 1px solid #2a3340; border-radius: 3px; padding: 0 5px; font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="stage" id="stage">
+    <canvas id="cv" width="640" height="640"></canvas>
+    <div class="hud" id="hud">
+      <div class="row"><span class="k">当前节点</span><span class="v" id="hudCur">—</span></div>
+      <div class="row"><span class="k">g (已花费)</span><span class="v g" id="hudG">—</span></div>
+      <div class="row"><span class="k">h (估算)</span><span class="v h" id="hudH">—</span></div>
+      <div class="row"><span class="k">f = g + h</span><span class="v f" id="hudF">—</span></div>
+      <div class="row" style="margin-top:6px;border-top:1px solid #1f2937;padding-top:6px"><span class="k">open</span><span class="v" id="hudOpen">0</span></div>
+      <div class="row"><span class="k">closed</span><span class="v" id="hudClosed">0</span></div>
+      <div class="row"><span class="k">总步数</span><span class="v" id="hudStep">0</span></div>
+    </div>
+    <div class="rec-pill" id="recPill"><span class="dot"></span><span id="recText">REC 0.0s</span></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h1>A* 路径搜索 · 分步讲解</h1>
+      <div class="sub">点击右侧任意步骤可跳到对应画面，按 <kbd>Space</kbd> 播放/暂停</div>
+    </div>
+
+    <div class="steps" id="steps">
+      <div class="step" data-step="0">
+        <span class="num">1</span><span class="title">起点、终点、障碍</span>
+        <div class="body">
+          A* 解决的是这个基本问题：<b>在一个网格地图里，从起点 S 走到终点 E，绕过障碍，找到最短路径</b>。
+          每一步只能上下左右（或加上对角）移动一格。
+        </div>
+      </div>
+
+      <div class="step" data-step="1">
+        <span class="num">2</span><span class="title">三个集合：open / closed / path</span>
+        <div class="body">
+          A* 维护<b>三个集合</b>，所有节点非此即彼：
+          <div class="bullet"><b>open（开放列表）</b>：已经发现、还没考察的"候选节点"，相当于待办清单。</div>
+          <div class="bullet"><b>closed（关闭列表）</b>：已经考察过、邻居都处理完了的节点，已办。</div>
+          <div class="bullet"><b>path（路径）</b>：最终回溯出来的从 S 到 E 的路径。</div>
+          <div class="legend">
+            <div class="it"><span class="sw" style="background:#facc15"></span>open 待办</div>
+            <div class="it"><span class="sw" style="background:#60a5fa"></span>closed 已办</div>
+            <div class="it"><span class="sw" style="background:#a78bfa"></span>path 路径</div>
+            <div class="it"><span class="sw" style="background:#1f2937;border:1px solid #374151"></span>墙 障碍</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step" data-step="2">
+        <span class="num">3</span><span class="title">代价函数 f = g + h</span>
+        <div class="body">
+          每个候选节点都有一个"优先级" <code>f</code>，由两部分组成：
+          <span class="formula">f(n) = g(n) + h(n)</span>
+          <div class="bullet"><code><b>g(n)</b></code>：从起点 S 走到 n 的<b>真实代价</b>（已花费）。</div>
+          <div class="bullet"><code><b>h(n)</b></code>：从 n 到终点 E 的<b>估算代价</b>（启发式）。</div>
+          直觉上：<code>g</code> 看你已经走了多远，<code>h</code> 看你还得走多远。<code>f</code> 越小说明这条路"看起来越短"，越值得先看。
+        </div>
+      </div>
+
+      <div class="step" data-step="3">
+        <span class="num">4</span><span class="title">启发式 h：估算的学问</span>
+        <div class="body">
+          <code>h</code> 是 A* 的灵魂。<b>不能高估</b>真实最短距离（否则 A* 不保证最优），常用的有：
+          <div class="bullet"><b>曼哈顿距离</b>（4 方向）：<code>|dx| + |dy|</code></div>
+          <div class="bullet"><b>对角距离 / octile</b>（8 方向）：<code>max(dx,dy) + (√2-1)·min(dx,dy)</code></div>
+          <div class="bullet"><b>欧氏距离</b>：<code>√(dx² + dy²)</code>，连续空间常用</div>
+          本演示使用 <b>octile</b>（八方向 + 对角代价 √2）。
+        </div>
+      </div>
+
+      <div class="step" data-step="4">
+        <span class="num">5</span><span class="title">A* 的核心循环</span>
+        <div class="body">
+          <b>循环三件事</b>，直到终点被加入 closed：
+          <div class="bullet"><b>① 取</b>：从 open 中拿出 <code>f</code> 最小的节点 → current</div>
+          <div class="bullet"><b>② 移</b>：把 current 从 open 移到 closed</div>
+          <div class="bullet"><b>③ 扩</b>：遍历 current 的邻居；对每个邻居计算新 <code>g'</code>，如果 <code>g' &lt; 旧 g</code>，就更新它的 g/h/f 和 parent，并塞进 open</div>
+          parent 指针记录"我从哪儿来"，最后用来<b>反向</b>回溯出完整路径。
+        </div>
+      </div>
+
+      <div class="step" data-step="5">
+        <span class="num">6</span><span class="title">松弛操作：为什么可能多次更新？</span>
+        <div class="body">
+          邻居的 <code>g</code> 不一定第一次就拿到最优值——可能从另一条更近的路绕过来时更小。所以每次扩展都要"松弛"（relaxation）：
+          <span class="formula">if g(候选) + w &lt; g(邻居) then 更新</span>
+          这就是为什么 A* 能保证找到最短路径（Dijkstra 也有这步）。
+        </div>
+      </div>
+
+      <div class="step" data-step="6">
+        <span class="num">7</span><span class="title">回溯出最终路径</span>
+        <div class="body">
+          终点进入 closed 后，沿 <code>parent</code> 指针一路从 E<b>反向</b>跳回 S，得到的节点序列反转一下就是 S→E 的最短路径。
+          <div class="bullet">parent 数组是 A* 的"记忆"。</div>
+          <div class="bullet">路径不一定唯一（f 相等时），但每条都最短。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="nav-btns">
+        <button id="btnPrev" title="上一步">◀</button>
+        <button id="btnNext" title="下一步">▶</button>
+      </div>
+      <button id="btnPlay" class="primary">▶ 自动播放</button>
+      <button id="btnReset">⟳ 重置演示</button>
+      <div class="ctrl-spacer"></div>
+      <button id="btnRec" class="danger">● 录视频</button>
+    </div>
+    <div class="footer">
+      <kbd>←</kbd>/<kbd>→</kbd> 切换步骤 · <kbd>Space</kbd> 播放 · <kbd>R</kbd> 重置
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ============== 网格 ==============
+  const COLS = 16, ROWS = 16;
+  const CELL = 40; // 640 / 16
+  const H_DIAG = 1.41421356, H_S = 1.0;
+
+  const cv = document.getElementById('cv');
+  cv.width = COLS * CELL;
+  cv.height = ROWS * CELL;
+  const ctx = cv.getContext('2d');
+
+  // ============== 状态 ==============
+  let grid, start, end;
+  let cellState, gScore, parent;
+  let openSet, closedSet, openList; // openList 是数组用于显示
+  let current, path, steps, hudCurrent, hudG, hudH, hudF;
+
+  let activeStep = 0;       // 当前讲解步骤 (0..6)
+  let playTimer = null;
+  let playSpeed = 1400;     // 自动播放每步间隔 ms
+
+  // 用于录制
+  let recorder = null, recChunks = [], recStart = 0, recTimerInt = null;
+  const REC_SECONDS = 40;
+
+  // ============== 工具 ==============
+  const idx = (c, r) => r * COLS + c;
+  const rc = i => ({ c: i % COLS, r: Math.floor(i / COLS) });
+  const inB = (c, r) => c >= 0 && c < COLS && r >= 0 && r < ROWS;
+  const h = (c, r) => {
+    const dx = Math.abs(c - end.c), dy = Math.abs(r - end.r);
+    return (dx + dy) + (H_DIAG - 2) * Math.min(dx, dy);
+  };
+  const N8 = [
+    [-1, 0, H_S], [1, 0, H_S], [0, -1, H_S], [0, 1, H_S],
+    [-1, -1, H_DIAG], [1, -1, H_DIAG], [-1, 1, H_DIAG], [1, 1, H_DIAG],
+  ];
+
+  // ============== 地图：固定一个小地图，方便讲解时画面稳定 ==============
+  function makeMap() {
+    grid = new Array(COLS * ROWS).fill(0);
+    start = { c: 1, r: 1 };
+    end   = { c: 14, r: 14 };
+    // 几道墙构成有趣的迷宫
+    const walls = [
+      [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [3, 6], [3, 7],
+      [7, 3], [7, 4], [7, 5], [7, 6], [7, 7], [7, 8], [7, 9], [7, 10],
+      [5, 10], [6, 10], [7, 10], [8, 10], [9, 10], [10, 10], [11, 10], [12, 10],
+      [11, 1], [11, 2], [11, 3], [11, 4], [11, 5], [11, 6], [11, 7], [11, 8], [11, 9], [11, 10],
+      [9, 13], [10, 13], [11, 13], [12, 13], [13, 13],
+    ];
+    for (const [c, r] of walls) if (inB(c, r)) grid[idx(c, r)] = 1;
+    grid[idx(start.c, start.r)] = 0;
+    grid[idx(end.c, end.r)] = 0;
+  }
+
+  function clearAll() {
+    cellState = new Array(COLS * ROWS).fill(0); // 0=未 1=open 2=closed 3=path 4=current高亮
+    gScore = new Array(COLS * ROWS).fill(Infinity);
+    parent = new Array(COLS * ROWS).fill(-1);
+    openSet = new Set();
+    closedSet = new Set();
+    openList = []; // {c,r,f,g,h}
+    current = null;
+    path = null;
+    steps = 0;
+    hudCurrent = '-'; hudG = '-'; hudH = '-'; hudF = '-';
+  }
+
+  // ============== A* 步进 ==============
+  // 一步 = 取出 f 最小的 current，扩展邻居
+  function step() {
+    if (openList.length === 0) return 'empty';
+    // 取 f 最小
+    let mi = 0;
+    for (let i = 1; i < openList.length; i++) if (openList[i].f < openList[mi].f) mi = i;
+    const node = openList.splice(mi, 1)[0];
+    const ci = idx(node.c, node.r);
+    if (closedSet.has(ci)) return 'cont';
+    openSet.delete(ci);
+    closedSet.add(ci);
+    cellState[ci] = 2;
+    current = { c: node.c, r: node.r };
+    steps++;
+    hudCurrent = '(' + node.c + ',' + node.r + ')';
+    hudG = node.g.toFixed(2);
+    hudH = node.h.toFixed(2);
+    hudF = node.f.toFixed(2);
+
+    if (node.c === end.c && node.r === end.r) {
+      const p = []; let k = ci;
+      while (k !== -1) { const o = rc(k); p.push(o); k = parent[k]; }
+      p.reverse();
+      path = p;
+      for (const pt of path) cellState[idx(pt.c, pt.r)] = 3;
+      return 'done';
+    }
+
+    for (const [dc, dr, w] of N8) {
+      const nc = node.c + dc, nr = node.r + dr;
+      if (!inB(nc, nr)) continue;
+      const ni = idx(nc, nr);
+      if (grid[ni] === 1) continue;
+      if (closedSet.has(ni)) continue;
+      if (dc !== 0 && dr !== 0) {
+        if (grid[idx(node.c + dc, node.r)] === 1 && grid[idx(node.c, node.r + dr)] === 1) continue;
+      }
+      const tg = node.g + w;
+      if (tg < gScore[ni]) {
+        parent[ni] = ci;
+        gScore[ni] = tg;
+        const hVal = h(nc, nr);
+        // 移除旧的同位置 open 节点（如果有）
+        for (let i = openList.length - 1; i >= 0; i--) {
+          if (openList[i].c === nc && openList[i].r === nr) openList.splice(i, 1);
+        }
+        openList.push({ c: nc, r: nr, g: tg, h: hVal, f: tg + hVal });
+        openSet.add(ni);
+        if (cellState[ni] !== 3) cellState[ni] = 1;
+      }
+    }
+    return 'cont';
+  }
+
+  // 一键跑到 activeStep 对应的搜索状态
+  // step 0: 仅显示地图
+  // step 1: 显示图 + 把 start 放进 open（模拟"初始化"）
+  // step 2: 显示 g/h/f 公式（无搜索进展）
+  // step 3: 跑 1 步展示启发式
+  // step 4: 跑 3-5 步展示循环
+  // step 5: 跑 ~10 步展示松弛
+  // step 6: 跑完，回溯路径
+  function applyStep(n) {
+    clearAll();
+    if (n <= 0) return;
+    // 步骤 1：把起点放进 open
+    if (n >= 1) {
+      const si = idx(start.c, start.r);
+      gScore[si] = 0;
+      const h0 = h(start.c, start.r);
+      openList.push({ c: start.c, r: start.r, g: 0, h: h0, f: h0 });
+      openSet.add(si);
+      cellState[si] = 1;
+      hudCurrent = '(' + start.c + ',' + start.r + ')';
+      hudG = '0.00';
+      hudH = h0.toFixed(2);
+      hudF = h0.toFixed(2);
+    }
+    if (n === 1) return;
+    // 跑 1 步
+    if (n >= 2) step();
+    if (n === 2) return;
+    if (n >= 3) {
+      for (let i = 0; i < 2; i++) { const r = step(); if (r === 'done' || r === 'empty') break; }
+    }
+    if (n === 3) return;
+    if (n >= 4) {
+      for (let i = 0; i < 4; i++) { const r = step(); if (r === 'done' || r === 'empty') break; }
+    }
+    if (n === 4) return;
+    if (n >= 5) {
+      for (let i = 0; i < 8; i++) { const r = step(); if (r === 'done' || r === 'empty') break; }
+    }
+    if (n === 5) return;
+    if (n >= 6) {
+      // 跑完
+      let safety = 5000;
+      while (safety-- > 0) {
+        const r = step();
+        if (r === 'done' || r === 'empty') break;
+      }
+    }
+  }
+
+  // ============== 渲染 ==============
+  function draw() {
+    ctx.fillStyle = '#0a0d12';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const i = idx(c, r);
+        const s = cellState[i];
+        if (grid[i] === 1) {
+          ctx.fillStyle = '#1f2937';
+          ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+          ctx.fillStyle = '#374151';
+          ctx.fillRect(c * CELL + 3, r * CELL + 3, CELL - 6, CELL - 6);
+        } else {
+          if (s === 1) ctx.fillStyle = '#facc15';
+          else if (s === 2) ctx.fillStyle = '#60a5fa';
+          else if (s === 3) ctx.fillStyle = '#a78bfa';
+          else ctx.fillStyle = '#111827';
+          ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+        }
+        // 当前节点高亮
+        if (current && current.c === c && current.r === r) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(c * CELL + 1.5, r * CELL + 1.5, CELL - 3, CELL - 3);
+        }
+      }
+    }
+
+    // 网格线
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    for (let c = 0; c <= COLS; c++) { ctx.beginPath(); ctx.moveTo(c * CELL + .5, 0); ctx.lineTo(c * CELL + .5, cv.height); ctx.stroke(); }
+    for (let r = 0; r <= ROWS; r++) { ctx.beginPath(); ctx.moveTo(0, r * CELL + .5); ctx.lineTo(cv.width, r * CELL + .5); ctx.stroke(); }
+
+    // S / E
+    drawNode(start.c, start.r, '#22c55e', 'S');
+    drawNode(end.c, end.r, '#ef4444', 'E');
+
+    // 数字标签：仅当 cell 上有 g/h 信息时画
+    ctx.font = 'bold 10px ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i < cellState.length; i++) {
+      const s = cellState[i];
+      if (s !== 1 && s !== 2 && s !== 3) continue;
+      const c = i % COLS, r = Math.floor(i / COLS);
+      const o = { c, r };
+      // 找 openList 里这个位置的节点
+      let node = null;
+      for (const n of openList) if (n.c === c && n.r === r) { node = n; break; }
+      const gV = node ? node.g : (gScore[i] === Infinity ? null : gScore[i]);
+      const fV = node ? node.f : null;
+      if (gV == null) continue;
+      const tx = c * CELL + CELL / 2;
+      const ty = r * CELL + CELL / 2;
+      // f 在上，g 在下
+      if (fV != null) {
+        ctx.fillStyle = '#0a0d12';
+        ctx.fillRect(tx - 14, ty - 13, 28, 11);
+        ctx.fillStyle = '#a78bfa';
+        ctx.fillText(fV.toFixed(1), tx, ty - 7);
+      }
+      ctx.fillStyle = '#0a0d12';
+      ctx.fillRect(tx - 14, ty + 2, 28, 11);
+      ctx.fillStyle = '#facc15';
+      ctx.fillText(gV.toFixed(1), tx, ty + 8);
+    }
+
+    // HUD 文本
+    document.getElementById('hudCur').textContent = hudCurrent;
+    document.getElementById('hudG').textContent = hudG;
+    document.getElementById('hudH').textContent = hudH;
+    document.getElementById('hudF').textContent = hudF;
+    document.getElementById('hudOpen').textContent = openList.length;
+    document.getElementById('hudClosed').textContent = closedSet.size;
+    document.getElementById('hudStep').textContent = steps;
+  }
+
+  function drawNode(c, r, color, label) {
+    const x = c * CELL, y = r * CELL;
+    ctx.fillStyle = color;
+    ctx.fillRect(x + 2, y + 2, CELL - 4, CELL - 4);
+    ctx.fillStyle = '#0a0d12';
+    ctx.font = 'bold 16px ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + CELL / 2, y + CELL / 2 + 1);
+  }
+
+  // ============== 步骤切换 ==============
+  function setActiveStep(n, auto) {
+    activeStep = Math.max(0, Math.min(6, n));
+    document.querySelectorAll('.step').forEach(el => {
+      el.classList.toggle('active', +el.dataset.step === activeStep);
+    });
+    const activeEl = document.querySelector('.step[data-step="' + activeStep + '"]');
+    if (activeEl) activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    applyStep(activeStep);
+    draw();
+  }
+
+  function nextStep() {
+    if (activeStep < 6) setActiveStep(activeStep + 1);
+    else stopPlay();
+  }
+  function prevStep() {
+    if (activeStep > 0) setActiveStep(activeStep - 1);
+  }
+
+  function startPlay() {
+    if (playTimer) return;
+    document.getElementById('btnPlay').textContent = '⏸ 暂停';
+    if (activeStep >= 6) setActiveStep(0);
+    playTimer = setInterval(() => {
+      if (activeStep < 6) setActiveStep(activeStep + 1);
+      else stopPlay();
+    }, playSpeed);
+  }
+  function stopPlay() {
+    if (playTimer) clearInterval(playTimer);
+    playTimer = null;
+    document.getElementById('btnPlay').textContent = '▶ 自动播放';
+  }
+
+  // ============== 录制 ==============
+  function startRecording() {
+    if (recorder) return;
+    const stream = cv.captureStream(30);
+    recChunks = [];
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+      ? 'video/webm;codecs=vp9'
+      : (MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm');
+    recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000 });
+    recorder.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
+    recorder.onstop = () => {
+      const blob = new Blob(recChunks, { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      a.download = 'astar-tutorial-' + ts + '.webm';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    };
+    recorder.start(100);
+    recStart = performance.now();
+    document.getElementById('recPill').style.display = '';
+    document.getElementById('btnRec').textContent = '■ 停止';
+    recTimerInt = setInterval(() => {
+      const t = (performance.now() - recStart) / 1000;
+      document.getElementById('recText').textContent = 'REC ' + t.toFixed(1) + 's';
+    }, 100);
+    // 录制时自动从头播放，速度放慢一点
+    playSpeed = 2200;
+    stopPlay();
+    setActiveStep(0);
+    startPlay();
+    setTimeout(() => { if (recorder) recorder.stop(); }, REC_SECONDS * 1000);
+  }
+  function stopRecording() {
+    if (!recorder) return;
+    stopPlay();
+    recorder.stop();
+    recorder = null;
+    if (recTimerInt) clearInterval(recTimerInt);
+    document.getElementById('recPill').style.display = 'none';
+    document.getElementById('btnRec').textContent = '● 录视频';
+    playSpeed = 1400;
+  }
+
+  // ============== 事件 ==============
+  document.querySelectorAll('.step').forEach(el => {
+    el.addEventListener('click', () => {
+      stopPlay();
+      setActiveStep(+el.dataset.step);
+    });
+  });
+  document.getElementById('btnPrev').addEventListener('click', () => { stopPlay(); prevStep(); });
+  document.getElementById('btnNext').addEventListener('click', () => { stopPlay(); nextStep(); });
+  document.getElementById('btnPlay').addEventListener('click', () => {
+    if (playTimer) stopPlay(); else startPlay();
+  });
+  document.getElementById('btnReset').addEventListener('click', () => {
+    stopPlay();
+    setActiveStep(0);
+  });
+  document.getElementById('btnRec').addEventListener('click', () => {
+    if (recorder) stopRecording(); else startRecording();
+  });
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); document.getElementById('btnPlay').click(); }
+    else if (e.code === 'ArrowRight') { stopPlay(); nextStep(); }
+    else if (e.code === 'ArrowLeft') { stopPlay(); prevStep(); }
+    else if (e.key === 'r' || e.key === 'R') document.getElementById('btnReset').click();
+  });
+
+  // ============== 启动 ==============
+  makeMap();
+  clearAll();
+  setActiveStep(0);
+  // 一帧稳定后再画一次，确保初始状态干净
+  draw();
+})();
+</script>
+</body>
+</html>

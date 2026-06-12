@@ -19,37 +19,44 @@ namespace Fuel.Launcher.Resources
             if (!YooAssets.TryGetPackage(localConfig.packageName, out _package))
                 _package = YooAssets.CreatePackage(localConfig.packageName);
 
+            if (_package.InitializeStatus == EOperationStatus.None)
+            {
 #if UNITY_EDITOR
-            var buildResult = EditorSimulateBuildInvoker.Build(localConfig.packageName, (int)EBundleType.VirtualAssetBundle);
-            var editorFileSystem = FileSystemParameters.CreateDefaultEditorFileSystemParameters(buildResult.PackageRootDirectory);
-            var editorOptions = new EditorSimulateModeOptions
-            {
-                EditorFileSystemParameters = editorFileSystem
-            };
-            var initOperation = _package.InitializePackageAsync(editorOptions);
+                var buildResult = EditorSimulateBuildInvoker.Build(localConfig.packageName, (int)EBundleType.VirtualAssetBundle);
+                var editorFileSystem = FileSystemParameters.CreateDefaultEditorFileSystemParameters(buildResult.PackageRootDirectory);
+                var editorOptions = new EditorSimulateModeOptions
+                {
+                    EditorFileSystemParameters = editorFileSystem
+                };
+                var initOperation = _package.InitializePackageAsync(editorOptions);
 #else
-            var hostUrl = string.IsNullOrEmpty(remoteInfo.resourceHostUrl) ? localConfig.defaultHostUrl : remoteInfo.resourceHostUrl;
-            var fallbackHostUrl = string.IsNullOrEmpty(remoteInfo.fallbackResourceHostUrl) ? localConfig.fallbackHostUrl : remoteInfo.fallbackResourceHostUrl;
-            var remoteService = new StartupRemoteService(hostUrl, fallbackHostUrl);
+                var hostUrl = string.IsNullOrEmpty(remoteInfo.resourceHostUrl) ? localConfig.defaultHostUrl : remoteInfo.resourceHostUrl;
+                var fallbackHostUrl = string.IsNullOrEmpty(remoteInfo.fallbackResourceHostUrl) ? localConfig.fallbackHostUrl : remoteInfo.fallbackResourceHostUrl;
+                var remoteService = new StartupRemoteService(hostUrl, fallbackHostUrl);
 #if UNITY_WEBGL
-            var webOptions = new WebPlayModeOptions
-            {
-                WebServerFileSystemParameters = FileSystemParameters.CreateDefaultWebServerFileSystemParameters(),
-                WebRemoteFileSystemParameters = FileSystemParameters.CreateDefaultWebRemoteFileSystemParameters(remoteService)
-            };
-            var initOperation = _package.InitializePackageAsync(webOptions);
+                var webOptions = new WebPlayModeOptions
+                {
+                    WebServerFileSystemParameters = FileSystemParameters.CreateDefaultWebServerFileSystemParameters(),
+                    WebRemoteFileSystemParameters = FileSystemParameters.CreateDefaultWebRemoteFileSystemParameters(remoteService)
+                };
+                var initOperation = _package.InitializePackageAsync(webOptions);
 #else
-            var hostOptions = new HostPlayModeOptions
+                var hostOptions = new HostPlayModeOptions
+                {
+                    BuiltinFileSystemParameters = FileSystemParameters.CreateDefaultBuiltinFileSystemParameters(),
+                    CacheFileSystemParameters = FileSystemParameters.CreateDefaultSandboxFileSystemParameters(remoteService)
+                };
+                var initOperation = _package.InitializePackageAsync(hostOptions);
+#endif
+#endif
+                await initOperation.ToUniTask(cancellationToken: cancellationToken);
+                if (initOperation.Status != EOperationStatus.Succeeded)
+                    throw new InvalidOperationException(initOperation.Error);
+            }
+            else if (_package.InitializeStatus != EOperationStatus.Succeeded)
             {
-                BuiltinFileSystemParameters = FileSystemParameters.CreateDefaultBuiltinFileSystemParameters(),
-                CacheFileSystemParameters = FileSystemParameters.CreateDefaultSandboxFileSystemParameters(remoteService)
-            };
-            var initOperation = _package.InitializePackageAsync(hostOptions);
-#endif
-#endif
-            await initOperation.ToUniTask(cancellationToken: cancellationToken);
-            if (initOperation.Status != EOperationStatus.Succeeded)
-                throw new InvalidOperationException(initOperation.Error);
+                throw new InvalidOperationException($"Resource package '{localConfig.packageName}' initialize status is {_package.InitializeStatus}.");
+            }
 
             var versionOperation = _package.RequestPackageVersionAsync();
             await versionOperation.ToUniTask(cancellationToken: cancellationToken);

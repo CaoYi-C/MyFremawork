@@ -5,8 +5,6 @@ using Cysharp.Threading.Tasks;
 using Fuel.Log;
 using Fuel.Pools;
 using Fuel.Singleton;
-using Fuel.Pools;
-using Fuel.Singleton;
 using UnityEngine;
 using Object = UnityEngine.Object;
 

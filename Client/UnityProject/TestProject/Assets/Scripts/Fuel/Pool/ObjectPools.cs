@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-using System.Runtime.CompilerServices;
 using Fuel.Log;
 using Fuel.Singleton;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+using System.Runtime.CompilerServices;
 
 #endif
 using UnityEngine;

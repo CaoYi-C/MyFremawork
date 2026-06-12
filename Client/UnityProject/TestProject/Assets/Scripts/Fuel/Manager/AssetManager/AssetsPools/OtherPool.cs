@@ -32,7 +32,7 @@ namespace Fuel.AssetManager.AssetsPools
             _assetName = assetName;
             _groupName = groupName;
             _base = await AssetsLoadManager.Instance.InternalLoadAsync<T>(assetName, groupName);
-            return true;
+            return _base != null;
         }
 
         internal bool InitSync(string assetName, string groupName)
@@ -40,13 +40,18 @@ namespace Fuel.AssetManager.AssetsPools
             _assetName = assetName;
             _groupName = groupName;
             _base = AssetsLoadManager.Instance.InternalLoadSync<T>(assetName, groupName);
-            return true;
+            return _base != null;
         }
 
         internal async Task<T> GetAsync(string assetName, string groupName)
         {
             if (!_isInit)
+            {
                 _isInit = await InitAsync(assetName, groupName);
+                if (!_isInit)
+                    return null;
+            }
+
             if (_pool.Count > 0)
             {
                 T mat = _pool.Pop();
@@ -73,7 +78,12 @@ namespace Fuel.AssetManager.AssetsPools
         internal T GetSync(string assetName, string groupName)
         {
             if (!_isInit)
+            {
                 _isInit = InitSync(assetName, groupName);
+                if (!_isInit)
+                    return null;
+            }
+
             if (_pool.Count > 0)
             {
                 T mat = _pool.Pop();

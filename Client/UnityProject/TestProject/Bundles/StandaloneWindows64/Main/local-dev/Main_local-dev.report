@@ -1,0 +1,208 @@
+{
+    "Summary": {
+        "YooVersion": "3.0.1-beta",
+        "UnityVersion": "2022.3.62f2c1",
+        "BuildDate": "2026/6/12 17:52:03",
+        "BuildSeconds": 9,
+        "BuildTarget": 19,
+        "BuildPipeline": "ScriptableBuildPipeline",
+        "BuildBundleType": 2,
+        "BuildPackageName": "Main",
+        "BuildPackageVersion": "local-dev",
+        "BuildPackageNote": "local startup pipeline test",
+        "UniqueBundleName": false,
+        "EnableAddressable": true,
+        "SupportExtensionless": true,
+        "LocationToLower": false,
+        "IncludeAssetGuid": false,
+        "AutoCollectShaders": true,
+        "IgnoreRuleName": "YooAsset.Editor.NormalIgnoreRule",
+        "ClearBuildCacheFiles": true,
+        "UseAssetDependencyDB": true,
+        "EnableSharePackRule": true,
+        "SingleReferencedPackAlone": false,
+        "EncryptionServicesClassName": "null",
+        "ManifestProcessServicesClassName": "null",
+        "ManifestRestoreServicesClassName": "null",
+        "FileNameStyle": 2,
+        "CompressOption": 2,
+        "DisableWriteTypeTree": false,
+        "IgnoreTypeTreeChanges": false,
+        "ReplaceAssetPathWithAddress": false,
+        "WriteLinkXML": true,
+        "CacheServerHost": "",
+        "CacheServerPort": 0,
+        "BuiltinShadersBundleName": "",
+        "MonoScriptsBundleName": "",
+        "AssetFileTotalCount": 5,
+        "MainAssetTotalCount": 5,
+        "AllBundleTotalCount": 4,
+        "AllBundleTotalSize": 136636,
+        "EncryptedBundleTotalCount": 0,
+        "EncryptedBundleTotalSize": 0
+    },
+    "AssetInfos": [
+        {
+            "Address": "HotUpdate.dll",
+            "AssetPath": "Assets/AssetsPackage/Main/Code/HotUpdate.dll.bytes",
+            "AssetGuid": "9521e32be4f2de94fb2040b8326697fb",
+            "AssetTags": [],
+            "MainBundleName": "assets_assetspackage_main_code.bundle",
+            "MainBundleSize": 3856,
+            "DependAssets": [],
+            "DependBundles": []
+        },
+        {
+            "Address": "test_textitems",
+            "AssetPath": "Assets/AssetsPackage/Main/Code/test_textitems.bytes",
+            "AssetGuid": "a887092bc999d8541b645e020397c293",
+            "AssetTags": [],
+            "MainBundleName": "assets_assetspackage_main_code.bundle",
+            "MainBundleSize": 3856,
+            "DependAssets": [],
+            "DependBundles": []
+        },
+        {
+            "Address": "RedDotConfigAsset",
+            "AssetPath": "Assets/AssetsPackage/Main/RedDot/RedDotConfigAsset.asset",
+            "AssetGuid": "1a5e6b9a7137e594b87883bd9dbf87f0",
+            "AssetTags": [],
+            "MainBundleName": "assets_assetspackage_main_reddot.bundle",
+            "MainBundleSize": 3389,
+            "DependAssets": [],
+            "DependBundles": []
+        },
+        {
+            "Address": "SampleScene",
+            "AssetPath": "Assets/AssetsPackage/Main/Scene/SampleScene.unity",
+            "AssetGuid": "9fc0d4010bbf28b4594072e72b8655ab",
+            "AssetTags": [],
+            "MainBundleName": "assets_assetspackage_main_scene.bundle",
+            "MainBundleSize": 119947,
+            "DependAssets": [],
+            "DependBundles": []
+        },
+        {
+            "Address": "TestPanel",
+            "AssetPath": "Assets/AssetsPackage/Main/UIPrefab/TestPanel.prefab",
+            "AssetGuid": "b47e4ca3d7b41924cbbb616e45f99390",
+            "AssetTags": [],
+            "MainBundleName": "assets_assetspackage_main_uiprefab.bundle",
+            "MainBundleSize": 9444,
+            "DependAssets": [],
+            "DependBundles": []
+        }
+    ],
+    "BundleInfos": [
+        {
+            "BundleName": "assets_assetspackage_main_code.bundle",
+            "FileName": "assets_assetspackage_main_code_fdf9908a84c0add50eb5abf4a3f40bbb.bundle",
+            "FileHash": "fdf9908a84c0add50eb5abf4a3f40bbb",
+            "FileCrc": 3184428096,
+            "FileSize": 3856,
+            "Encrypted": false,
+            "Tags": [],
+            "DependBundles": [],
+            "ReferenceBundles": [],
+            "BundleContents": [
+                {
+                    "AssetPath": "Assets/AssetsPackage/Main/Code/HotUpdate.dll.bytes",
+                    "AssetGUID": "9521e32be4f2de94fb2040b8326697fb"
+                },
+                {
+                    "AssetPath": "Assets/AssetsPackage/Main/Code/test_textitems.bytes",
+                    "AssetGUID": "a887092bc999d8541b645e020397c293"
+                }
+            ]
+        },
+        {
+            "BundleName": "assets_assetspackage_main_reddot.bundle",
+            "FileName": "assets_assetspackage_main_reddot_83c1ac461c2517e9fe553bb754c0467c.bundle",
+            "FileHash": "83c1ac461c2517e9fe553bb754c0467c",
+            "FileCrc": 3314612779,
+            "FileSize": 3389,
+            "Encrypted": false,
+            "Tags": [],
+            "DependBundles": [],
+            "ReferenceBundles": [],
+            "BundleContents": [
+                {
+                    "AssetPath": "Assets/AssetsPackage/Main/RedDot/RedDotConfigAsset.asset",
+                    "AssetGUID": "1a5e6b9a7137e594b87883bd9dbf87f0"
+                }
+            ]
+        },
+        {
+            "BundleName": "assets_assetspackage_main_scene.bundle",
+            "FileName": "assets_assetspackage_main_scene_4f7b947d52f38a1acf087ddf19000207.bundle",
+            "FileHash": "4f7b947d52f38a1acf087ddf19000207",
+            "FileCrc": 2466990795,
+            "FileSize": 119947,
+            "Encrypted": false,
+            "Tags": [],
+            "DependBundles": [],
+            "ReferenceBundles": [],
+            "BundleContents": [
+                {
+                    "AssetPath": "Assets/AssetsPackage/Main/Scene/SampleScene.unity",
+                    "AssetGUID": "9fc0d4010bbf28b4594072e72b8655ab"
+                }
+            ]
+        },
+        {
+            "BundleName": "assets_assetspackage_main_uiprefab.bundle",
+            "FileName": "assets_assetspackage_main_uiprefab_84813a771ad0efb1796073881cdd6b57.bundle",
+            "FileHash": "84813a771ad0efb1796073881cdd6b57",
+            "FileCrc": 2900810136,
+            "FileSize": 9444,
+            "Encrypted": false,
+            "Tags": [],
+            "DependBundles": [],
+            "ReferenceBundles": [],
+            "BundleContents": [
+                {
+                    "AssetPath": "Assets/AssetsPackage/Main/UIPrefab/TestPanel.prefab",
+                    "AssetGUID": "b47e4ca3d7b41924cbbb616e45f99390"
+                }
+            ]
+        }
+    ],
+    "IndependentAssets": [
+        {
+            "AssetPath": "Assets/AssetsPackage/Depend/Font/PlaywriteGBJ-Italic-VariableFont_wght.ttf",
+            "AssetGuid": "caf9af42ee9498342908e6526ff37bc3",
+            "AssetType": "UnityEngine.Font",
+            "FileSize": 343808
+        },
+        {
+            "AssetPath": "Assets/AssetsPackage/Depend/Font/PlaywriteGBJ-VariableFont_wght.ttf",
+            "AssetGuid": "b66083461f56a764db25e05a303e6c7f",
+            "AssetType": "UnityEngine.Font",
+            "FileSize": 339288
+        },
+        {
+            "AssetPath": "Assets/AssetsPackage/Depend/Mat/TestCube.mat",
+            "AssetGuid": "b3c59d8118d79094a97f5bd2cd86951f",
+            "AssetType": "UnityEngine.Material",
+            "FileSize": 2207
+        },
+        {
+            "AssetPath": "Assets/AssetsPackage/Depend/Model/222.fbx",
+            "AssetGuid": "6749e29f7038e31499d5da705060b5be",
+            "AssetType": "UnityEngine.GameObject",
+            "FileSize": 83200
+        },
+        {
+            "AssetPath": "Assets/AssetsPackage/Depend/Shader/Custom_FrostedGlass.mat",
+            "AssetGuid": "b52e8c8dd6182224192d451138ac82fa",
+            "AssetType": "UnityEngine.Material",
+            "FileSize": 1528
+        },
+        {
+            "AssetPath": "Assets/AssetsPackage/Depend/Shader/FrostedGlass.shader",
+            "AssetGuid": "89bdb767305f9bf4daf74060fbef2552",
+            "AssetType": "UnityEngine.Shader",
+            "FileSize": 8224
+        }
+    ]
+}

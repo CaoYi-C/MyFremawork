@@ -1,5 +1,5 @@
-// PSDImporter.cs
-// Core import pipeline: JSON → UGUI Prefab + UIBindData + NodeProvider.
+﻿// PSDImporter.cs
+// Core import pipeline: JSON �?UGUI Prefab + UIBindData + NodeProvider.
 //
 // Pipeline:
 //   1. Load JSON + cache
@@ -15,8 +15,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
-using Manager.UIManager;
-using Manager.UIManager.Editor;          // UIBindCodeGenerator
+using Fuel.Manager.UIManager;
+using Fuel.Manager.UIManager.Editor;          // UIBindCodeGenerator
 using UnityEditor;
 using UnityEditor.SceneManagement;       // PrefabStageUtility
 using UnityEngine;
@@ -32,8 +32,8 @@ namespace PSDImporter.Editor
 
         public class ImportReport
         {
-            public bool   skipped;                   // true ⇒ nothing changed
-            public bool   sourceChanged;             // true ⇒ PSD file hash changed
+            public bool   skipped;                   // true �?nothing changed
+            public bool   sourceChanged;             // true �?PSD file hash changed
             public int    addedCount;
             public int    removedCount;
             public int    contentChangedCount;
@@ -70,7 +70,7 @@ namespace PSDImporter.Editor
         /// Run the import, with explicit overrides for UIBind code
         /// generation AND the prefab name. Use this when the caller
         /// (e.g. the Editor window) collects per-import inputs from the
-        /// user — a UIBind checkbox, and a prefab-name override field
+        /// user �?a UIBind checkbox, and a prefab-name override field
         /// on each PSD row.
         /// </summary>
         public static ImportReport Import(
@@ -103,17 +103,17 @@ namespace PSDImporter.Editor
             // The "fullyUnchanged" path is fast but it can be wrong in
             // two ways. Force a rebuild when:
             //   (a) the user manually deleted the generated prefab
-            //       between imports — cache + JSON are unchanged so the
+            //       between imports �?cache + JSON are unchanged so the
             //       diff says "skip" but the user clearly wants the
             //       prefab back; OR
             //   (b) the per-PSD prefab-name override changed since
-            //       last import — the JSON/PSD hash hasn't moved
+            //       last import �?the JSON/PSD hash hasn't moved
             //       (diff.fullyUnchanged is true), but the new name
             //       points at a different prefab path that has never
             //       been written. The old prefab at the old path is
             //       left alone; the new path is created fresh.
             // In both cases the existing lastImportedPrefabPath is now
-            // stale — we still want to compare against it for the
+            // stale �?we still want to compare against it for the
             // "file missing" check.
             var stalePathMissing = !string.IsNullOrEmpty(prevCache.lastImportedPrefabPath)
                 && !File.Exists(Path.GetFullPath(
@@ -125,11 +125,11 @@ namespace PSDImporter.Editor
                 Debug.Log(
                     $"[PSDImporter] '{doc.sourcePsd.name}' content unchanged, " +
                     $"but '{prevCache.lastImportedPrefabPath}' is missing " +
-                    "on disk — forcing a rebuild.");
+                    "on disk �?forcing a rebuild.");
                 diff.fullyUnchanged = false;
             }
 
-            // Derive class name early — the override-change detection
+            // Derive class name early �?the override-change detection
             // below needs it, and the rest of the import (prefab path,
             // NodeProvider / Window class names, UIBindData asset,
             // image subfolder) all use the same value. The per-PSD
@@ -143,7 +143,7 @@ namespace PSDImporter.Editor
 
             // Per-PSD prefab-name override change. The cache's
             // lastImportedPrefabPath encodes its OWN class name as
-            // <root>/<oldName>/<oldName>.prefab — extracting <oldName>
+            // <root>/<oldName>/<oldName>.prefab �?extracting <oldName>
             // from that path lets us detect a name change cheaply
             // (avoids re-running SanitizeClassName on the path).
             if (diff.fullyUnchanged
@@ -158,7 +158,7 @@ namespace PSDImporter.Editor
                     Debug.Log(
                         $"[PSDImporter] '{doc.sourcePsd.name}' content unchanged, " +
                         $"but per-PSD prefab-name override changed " +
-                        $"'{oldName}' → '{className}' — forcing a rebuild " +
+                        $"'{oldName}' �?'{className}' �?forcing a rebuild " +
                         $"so the new prefab is written to " +
                         $"<prefabOutputRoot>/{className}/{className}.prefab.");
                     diff.fullyUnchanged = false;
@@ -170,7 +170,7 @@ namespace PSDImporter.Editor
                 report.skipped = true;
                 report.prefabPath = prevCache.lastImportedPrefabPath;
                 report.bindDataPath = ResolveBindDataPath(prevCache.lastImportedPrefabPath, doc);
-                Debug.Log($"[PSDImporter] '{doc.sourcePsd.name}' unchanged — skipping rebuild.");
+                Debug.Log($"[PSDImporter] '{doc.sourcePsd.name}' unchanged �?skipping rebuild.");
                 return report;
             }
 
@@ -182,7 +182,7 @@ namespace PSDImporter.Editor
             // Pre-compute variable names + binding metadata on every node.
             AssignVariableNames(doc.root);
 
-            // Resolve imageOutputRoot once — used by both the pre-scan
+            // Resolve imageOutputRoot once �?used by both the pre-scan
             // (to know where to look for conflicts) and the copy step.
             var imageOutputRoot = string.IsNullOrEmpty(settings.imageOutputRoot)
                 ? "Assets/PSDImages"
@@ -249,7 +249,7 @@ namespace PSDImporter.Editor
             IncrementalTracker.Save(cache, cachePath);
 
             report.prefabPath = prefabPath;
-            Debug.Log($"[PSDImporter] Imported '{doc.sourcePsd.name}' → {prefabPath} " +
+            Debug.Log($"[PSDImporter] Imported '{doc.sourcePsd.name}' �?{prefabPath} " +
                       $"(+{report.addedCount} -{report.removedCount} ~{report.contentChangedCount})");
 
             // Open the prefab in the editor so the user can see it immediately.
@@ -260,7 +260,7 @@ namespace PSDImporter.Editor
 
         /// <summary>
         /// Open a prefab asset in the Prefab Stage. Safe to call multiple
-        /// times — only the first valid prefab will be opened.
+        /// times �?only the first valid prefab will be opened.
         /// </summary>
         private static void OpenPrefab(string prefabPath)
         {
@@ -344,8 +344,8 @@ namespace PSDImporter.Editor
                 n.shouldBind = IsBindableType(n.type);
                 if (!n.shouldBind) continue;
 
-                // Use the prefix-aware sanitizer — the SAME one Python uses.
-                // This makes `btn_close` → `BtnClose`, `toggle_music` → `ToggleMusic`, etc.
+                // Use the prefix-aware sanitizer �?the SAME one Python uses.
+                // This makes `btn_close` �?`BtnClose`, `toggle_music` �?`ToggleMusic`, etc.
                 var baseName = PsdNaming.SanitizeVariableName(n.name);
                 var unique = MakeUnique(baseName, used);
                 n.variableName     = unique;
@@ -410,7 +410,7 @@ namespace PSDImporter.Editor
             ImportReport report)
         {
             // Cache the PSD canvas size so ApplyRectTransform can convert
-            // PSD top-left coords → UGUI center-anchored coords.
+            // PSD top-left coords �?UGUI center-anchored coords.
             s_canvasSize = new Vector2(doc.canvas.width, doc.canvas.height);
 
             // Build a fresh hierarchy in memory. Reusing the old prefab
@@ -476,7 +476,7 @@ namespace PSDImporter.Editor
         {
             if (!node.visible) return;
 
-            // Skip the synthetic "root" wrapper — we attach directly to the
+            // Skip the synthetic "root" wrapper �?we attach directly to the
             // canvas root.
             bool isSyntheticRoot = node.parent == null;
             if (isSyntheticRoot)
@@ -498,7 +498,7 @@ namespace PSDImporter.Editor
             if (sliceMatch.Success)
                 displayName = sliceMatch.Groups[1].Value;
 
-            // Strip font tag suffix (e.g. "txt_title_H1" → "txt_title").
+            // Strip font tag suffix (e.g. "txt_title_H1" �?"txt_title").
             var fontTag = PsdNaming.FontTagFor(displayName);
             if (fontTag != null)
                 displayName = displayName.Substring(0,
@@ -527,7 +527,7 @@ namespace PSDImporter.Editor
                 case "text":
                     AttachTextComponent(go, node, doc);
                     break;
-                // "group" → just a RectTransform
+                // "group" �?just a RectTransform
             }
 
             // Recurse.
@@ -553,7 +553,7 @@ namespace PSDImporter.Editor
             // accumulates offsets and the child ends up in the wrong
             // place. (This is the "buttons too far down" bug.)
             //
-            // Fix: make every GROUP node a "pass-through" — size (0,0),
+            // Fix: make every GROUP node a "pass-through" �?size (0,0),
             // anchoredPosition (0,0), center anchor + center pivot. With
             // those, a group's pivot lands exactly at the canvas's
             // center, and any child with center anchor+pivot will be
@@ -625,7 +625,7 @@ namespace PSDImporter.Editor
             // `slice != null`. Unity's JsonUtility constructs a default
             // instance of any [Serializable] class field that's missing
             // from the JSON, so `node.slice` is *never* null after
-            // deserialization — it's an empty PsdSlice with l=t=r=b=0.
+            // deserialization �?it's an empty PsdSlice with l=t=r=b=0.
             // A pure null-check would mark every single Image in the
             // prefab as Sliced.
             if (node.slice != null
@@ -635,8 +635,8 @@ namespace PSDImporter.Editor
             }
 
             // Raycast policy:
-            //   interactive (button / input / scroll / slider / toggle) → on
-            //   decorative  (img / icon / bg / panel / mask / progress / item / fx) → off
+            //   interactive (button / input / scroll / slider / toggle) �?on
+            //   decorative  (img / icon / bg / panel / mask / progress / item / fx) �?off
             img.raycastTarget = IsInteractiveType(node.type);
 
             switch (node.type)
@@ -708,7 +708,7 @@ namespace PSDImporter.Editor
 
             if (mappedFont != null)
             {
-                Debug.Log($"[PSDImporter] '{node.id}' font tag '{fontTag}' → {mappedFont.name}");
+                Debug.Log($"[PSDImporter] '{node.id}' font tag '{fontTag}' �?{mappedFont.name}");
             }
         }
 
@@ -720,9 +720,9 @@ namespace PSDImporter.Editor
         {
             if (string.IsNullOrEmpty(node.imageFile))
             {
-                // 9-slice nodes have empty imageFile — try to find a
+                // 9-slice nodes have empty imageFile �?try to find a
                 // matching sprite by logical name (e.g. "img_bagBg_9slice"
-                // → "bagBg.png" exported by an "export_bagBg" layer).
+                // �?"bagBg.png" exported by an "export_bagBg" layer).
                 if (node.slice != null && (node.slice.l | node.slice.t | node.slice.r | node.slice.b) != 0)
                 {
                     return LoadSpriteByLogicalName(node, doc);
@@ -731,7 +731,7 @@ namespace PSDImporter.Editor
             }
             // The actual asset path is set by SetImagePathResolver, which
             // copies the PNG from the Python export folder into the prefab's
-            // images subfolder and registers the id → asset path mapping.
+            // images subfolder and registers the id �?asset path mapping.
             var path = GetImagePathOverride(node);
             if (string.IsNullOrEmpty(path))
             {
@@ -741,7 +741,7 @@ namespace PSDImporter.Editor
             var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
             if (sprite == null)
             {
-                // Diagnostic — the most common reason is that the asset
+                // Diagnostic �?the most common reason is that the asset
                 // hasn't been reimported as a Sprite yet. Try forcing one
                 // round of reimport and retry. If still null the file is
                 // probably missing on disk.
@@ -758,7 +758,7 @@ namespace PSDImporter.Editor
         /// <summary>
         /// For 9-slice nodes that have no imageFile, search for a
         /// matching sprite by logical name (prefix + 9-slice suffix
-        /// stripped).  e.g. "img_bagBg_9slice_10_10_10_10" → looks for
+        /// stripped).  e.g. "img_bagBg_9slice_10_10_10_10" �?looks for
         /// "bagBg.png" in the image output root.
         /// </summary>
         private static Sprite LoadSpriteByLogicalName(PsdNode node, PsdDocument doc)
@@ -825,7 +825,7 @@ namespace PSDImporter.Editor
             return s_imagePathOverride != null && s_imagePathOverride.TryGetValue(node.id, out var p) ? p : null;
         }
 
-        // ─── font-mapping (tag → Font, from Settings) ──────────────
+        // ─── font-mapping (tag �?Font, from Settings) ──────────────
 
         private static Font ResolveFontByTag(string tag)
         {
@@ -979,7 +979,7 @@ namespace PSDImporter.Editor
             {
                 report.warnings.Add(
                     $"Generated type '{bind.ClassName}NodeProvider' not found. " +
-                    "Unity will compile the new code shortly — click " +
+                    "Unity will compile the new code shortly �?click " +
                     "'Rebind' on the prefab once compile finishes.");
                 return;
             }
@@ -1030,9 +1030,9 @@ namespace PSDImporter.Editor
         }
 
         // Public so the importer window can compute the predicted
-        // prefab name for display ("→ 将生成: Assets/.../LoginView/..."),
+        // prefab name for display ("�?将生�? Assets/.../LoginView/..."),
         // matching exactly what the import path will produce. Window
-        // doesn't write prefabs — it just shows the user what to
+        // doesn't write prefabs �?it just shows the user what to
         // expect before they click Import.
         public static string SanitizeClassName(string s)
         {
@@ -1050,10 +1050,10 @@ namespace PSDImporter.Editor
         // "<prefabOutputRoot>/<className>/<className>.prefab". Used
         // by the importer itself to detect a per-PSD prefab-name
         // override change without re-running SanitizeClassName
-        // (which would mask differences — "My View" and "MyView"
+        // (which would mask differences �?"My View" and "MyView"
         // sanitize to the same string). Also used by the Window to
         // pre-fill the per-PSD override input from the last import's
-        // prefab path — making it public lets the Window reuse the
+        // prefab path �?making it public lets the Window reuse the
         // exact same parser, so the two views can never disagree on
         // what the "current class name" is. The parent folder name
         // is what we trust, because the importer always writes
@@ -1070,7 +1070,7 @@ namespace PSDImporter.Editor
             if (string.IsNullOrEmpty(dir)) return "";
             var parent = Path.GetFileName(dir);
             if (string.IsNullOrEmpty(parent)) return "";
-            // Convention is <name>/<name>.prefab — if the filename
+            // Convention is <name>/<name>.prefab �?if the filename
             // doesn't match the parent folder, the path was written
             // by an older tool version or hand-edited; fall back to
             // the parent (subfolder name) since that's what the new
@@ -1083,12 +1083,12 @@ namespace PSDImporter.Editor
         /// prefab filename, the subfolder under prefabOutputRoot, the
         /// root GameObject name, the NodeProvider + Window class names,
         /// the UIBindData asset name, AND the per-PSD subfolder under
-        /// imageOutputRoot — all five have to agree or the import
+        /// imageOutputRoot �?all five have to agree or the import
         /// breaks in subtle ways (image not found, UIBind class not
         /// found, etc.).
         ///
         /// Resolution order:
-        ///   1. <c>prefabNameOverride</c> argument — supplied per-call
+        ///   1. <c>prefabNameOverride</c> argument �?supplied per-call
         ///      from the importer window (each PSD row carries its own
         ///      override, so two PSDs in one batch can land as
         ///      different prefab names).
@@ -1132,7 +1132,7 @@ namespace PSDImporter.Editor
         ///
         /// If `manualResolutions` is non-null (typically produced by
         /// the ImageConflictResolverWindow), every layer present in the
-        /// dict gets its pre-decided outcome — no popup is shown. This
+        /// dict gets its pre-decided outcome �?no popup is shown. This
         /// is the new "preview both images before deciding" path.
         /// Layers NOT in the dict still go through the legacy dialog
         /// (handy for one-off scripts).
@@ -1154,7 +1154,7 @@ namespace PSDImporter.Editor
                 ? className
                 : ResolveClassName(doc, GetActiveSettings());
 
-            // imageOutputRoot is something like "Assets/PSDImages" — make
+            // imageOutputRoot is something like "Assets/PSDImages" �?make
             // sure both halves agree on the separator style.
             var rootRel = imageOutputRoot.Replace('\\', '/').TrimEnd('/');
             var rootAbs = Path.GetFullPath(
@@ -1167,14 +1167,14 @@ namespace PSDImporter.Editor
             // by filename. We need it because the user might decide to
             // "keep" an existing image, but the existing copy could
             // live in another subfolder (e.g. <root>/<SomeOtherPsd>/close.png)
-            // — we have to point the prefab's image reference at THAT
+            // �?we have to point the prefab's image reference at THAT
             // file, otherwise the prefab ends up with a blank Image.
             var existingIndex = BuildExistingPngIndex(rootAbs, false, 0f, 0f);
 
             foreach (var n in doc.root.SelfAndDescendants())
             {
                 // HasImage covers image / button / input / scroll / slider /
-                // toggle / bg / icon / mask / panel / progress / item / fx —
+                // toggle / bg / icon / mask / panel / progress / item / fx �?
                 // every type that the importer attaches a UGUI Image to.
                 if (!n.HasImage || string.IsNullOrEmpty(n.imageFile)) continue;
 
@@ -1192,7 +1192,7 @@ namespace PSDImporter.Editor
 
                 if (!File.Exists(srcPath))
                 {
-                    // Source PNG is missing — usually because Python
+                    // Source PNG is missing �?usually because Python
                     // wrote the export to a different folder than
                     // psdExportRoot (the user might have pointed
                     // imageOutputRoot at the same place they configured
@@ -1216,7 +1216,7 @@ namespace PSDImporter.Editor
                     }
                     Debug.LogWarning(
                         $"[PSDImporter] Source PNG missing: '{srcPath}' (for layer '{n.id}'). " +
-                        "Skipping — Python tool may not have written it yet, " +
+                        "Skipping �?Python tool may not have written it yet, " +
                         "and no fallback copy exists under imageOutputRoot.");
                     continue;
                 }
@@ -1249,7 +1249,7 @@ namespace PSDImporter.Editor
                 // subfolder from a previous PSD import), bind the
                 // prefab to it directly and skip both the resolver
                 // window and the legacy yes/no prompt. The point of
-                // imageOutputRoot is "deduped image set" — re-copying
+                // imageOutputRoot is "deduped image set" �?re-copying
                 // a byte-identical PNG into this PSD's own subfolder
                 // just bloats Assets/ and breaks the dedup contract.
                 // (We still let the resolver / prompt run when the
@@ -1285,15 +1285,15 @@ namespace PSDImporter.Editor
                         // User wants to keep whatever was there. Three
                         // sub-cases:
                         //   1) Destination already has identical content
-                        //      → no copy, dstRel points at the existing
+                        //      �?no copy, dstRel points at the existing
                         //        dst file (the prefab will reuse it).
                         //   2) Destination has a different file (or no
                         //      file) but a sibling under another PSD
-                        //      folder has identical content → bind the
+                        //      folder has identical content �?bind the
                         //        prefab to that sibling. The new PSD
                         //        subfolder doesn't get a copy; the
                         //        existing sibling does the job.
-                        //   3) Nothing matches anywhere → we still need
+                        //   3) Nothing matches anywhere �?we still need
                         //      the image, so copy it.
                         if (existingExists && Sha256OfFile(dstAbs) == newHash)
                         {
@@ -1321,7 +1321,7 @@ namespace PSDImporter.Editor
                     continue;
                 }
 
-                // No pre-decision — fall back to the legacy per-file
+                // No pre-decision �?fall back to the legacy per-file
                 // yes/no/yes-to-all dialog.
                 if (TryCopyOrPrompt(srcPath, dstAbs, newHash, ref overwriteAll, ref noOverwriteAll, out var decision))
                 {
@@ -1330,7 +1330,7 @@ namespace PSDImporter.Editor
                 }
                 else
                 {
-                    // User said "no" via the legacy dialog — same
+                    // User said "no" via the legacy dialog �?same
                     // "find a sibling to bind to" treatment as the
                     // resolver-window "keep" path, so the prefab
                     // doesn't end up with a blank image.
@@ -1340,7 +1340,7 @@ namespace PSDImporter.Editor
                             sameContentSiblingAbs, rootAbs, rootRel);
                         s_imagePathOverride[n.id] = siblingRel;
                     }
-                    // else: no sibling — fall through with no entry;
+                    // else: no sibling �?fall through with no entry;
                     // BuildPrefab will see a missing id and emit a
                     // null Image sprite (still logged as a warning).
                 }
@@ -1375,7 +1375,7 @@ namespace PSDImporter.Editor
         /// <summary>
         /// For every image-bearing node with `slice` metadata, set the
         /// Sprite's border on the TextureImporter. This is what makes
-        /// the Sprite a 9-slice — the actual `type=Sliced` on the
+        /// the Sprite a 9-slice �?the actual `type=Sliced` on the
         /// Image component is set in AttachImageComponent.
         /// </summary>
                 private static void ConfigureSlicedSprites(PsdDocument doc)
@@ -1395,7 +1395,7 @@ namespace PSDImporter.Editor
                     continue;
                 }
 
-                // 9-slice node with no imageFile — find the matching
+                // 9-slice node with no imageFile �?find the matching
                 // sprite by logical name (same as LoadSpriteByLogicalName).
                 var logical = PsdNaming.LogicalImageName(n.name);
                 if (string.IsNullOrEmpty(logical)) continue;
@@ -1443,7 +1443,7 @@ namespace PSDImporter.Editor
             if (importer == null)
             {
                 Debug.LogWarning(
-                    $"[PSDImporter] No TextureImporter for '{assetPath}' — " +
+                    $"[PSDImporter] No TextureImporter for '{assetPath}' �?" +
                     "could not set 9-slice border.");
                 return false;
             }
@@ -1528,14 +1528,14 @@ namespace PSDImporter.Editor
             {
                 if (useProgressBar)
                     EditorUtility.DisplayProgressBar("PSD Importer",
-                        "扫描现有图片…", 0f);
+                        "扫描现有图片", 0f);
 
                 var existingIndex = BuildExistingPngIndex(rootAbs, useProgressBar,
                     0.0f, 0.5f);
 
                 if (useProgressBar)
                     EditorUtility.DisplayProgressBar("PSD Importer",
-                        "比对图片…", 0.5f);
+                        "比对图片", 0.5f);
 
                 int identical = 0, compareIndex = 0;
                 foreach (var (fileName, srcPath, newHash) in newImages)
@@ -1544,18 +1544,18 @@ namespace PSDImporter.Editor
                     if (useProgressBar)
                     {
                         EditorUtility.DisplayProgressBar("PSD Importer",
-                            $"比对图片 ({compareIndex}/{newImages.Count})…",
+                            $"比对图片 ({compareIndex}/{newImages.Count})",
                             0.5f + 0.5f * (compareIndex / (float)newImages.Count));
                     }
 
                     if (!existingIndex.TryGetValue(fileName, out var hits))
-                        continue;   // no existing PNG with this name → safe to write
+                        continue;   // no existing PNG with this name �?safe to write
 
-                    // Find any existing file with the SAME content → no
+                    // Find any existing file with the SAME content �?no
                     // conflict. Otherwise, the FIRST existing file with
                     // DIFFERENT content is the one we'd be overwriting.
                     // (If multiple PSDs share the same filename with
-                    // different content we still only need one entry —
+                    // different content we still only need one entry �?
                     // the user gets to decide once and the file ends up
                     // either overwritten with the new content or left
                     // alone in place; in the latter case the OTHER
@@ -1575,12 +1575,12 @@ namespace PSDImporter.Editor
 
                     // Skip if the "overwrite" target is in the same
                     // destination subfolder AND has same content as
-                    // before — that's the "re-imported identical" case.
+                    // before �?that's the "re-imported identical" case.
                     // Already filtered by the hash==newHash check above.
 
                     result.Add(new ImageConflictResolverWindow.ImageConflict
                     {
-                        layerId           = $"{fileName} → {psdName}",
+                        layerId           = $"{fileName} �?{psdName}",
                         // The layer id is unique within the doc; using
                         // the file name + target subfolder makes the
                         // conflict entry self-describing in the
@@ -1605,7 +1605,7 @@ namespace PSDImporter.Editor
                     $"[PSDImporter] PreScanImageConflicts: scanned={scanned} " +
                     $"srcMissing={srcMissing} identical={identical} " +
                     $"existingFiles={existingIndex.Sum(kv => kv.Value.Count)} " +
-                    $"→ {result.Count} conflict(s) to review");
+                        $"{result.Count} conflict(s) to review");
             }
             finally
             {
@@ -1615,8 +1615,8 @@ namespace PSDImporter.Editor
         }
 
         // Walk the whole <imageOutputRoot>/ tree once, building a map
-        // from filename → list of (fullPath, sha256). Capped at the
-        // project's actual export root — we don't recurse into
+        // from filename �?list of (fullPath, sha256). Capped at the
+        // project's actual export root �?we don't recurse into
         // Library/, Temp/, etc. unless they happen to live under
         // <imageOutputRoot> (which they shouldn't).
         //
@@ -1637,14 +1637,14 @@ namespace PSDImporter.Editor
                 if (showProgress)
                 {
                     EditorUtility.DisplayProgressBar("PSD Importer",
-                        $"扫描现有图片 ({i + 1}/{files.Length})…",
+                        $"扫描现有图片 ({i + 1}/{files.Length})",
                         progressFrom + (progressTo - progressFrom) *
                             ((i + 1) / (float)files.Length));
                 }
                 var path = files[i];
                 string hash;
                 try { hash = Sha256OfFile(path); }
-                catch { continue; }   // file locked, deleted between scan and hash — skip
+                catch { continue; }   // file locked, deleted between scan and hash �?skip
                 var key = Path.GetFileName(path);
                 if (!index.TryGetValue(key, out var list))
                     index[key] = list = new List<(string, string)>();
@@ -1671,7 +1671,7 @@ namespace PSDImporter.Editor
             var normRoot = rootAbs.Replace('\\', '/').TrimEnd('/');
             if (normAbs.StartsWith(normRoot + "/", System.StringComparison.OrdinalIgnoreCase))
                 return rootRel + "/" + normAbs.Substring(normRoot.Length + 1);
-            // Defensive fallback — should not happen because
+            // Defensive fallback �?should not happen because
             // BuildExistingPngIndex only ever returns paths under
             // rootAbs.
             return normAbs;
@@ -1779,7 +1779,7 @@ namespace PSDImporter.Editor
             ref bool overwriteAll, ref bool noOverwriteAll,
             out ImageCopyDecision decision)
         {
-            // Case 1: no existing file → just copy.
+            // Case 1: no existing file �?just copy.
             if (!File.Exists(dst))
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(dst) ?? "");
@@ -1788,7 +1788,7 @@ namespace PSDImporter.Editor
                 return true;
             }
 
-            // Case 2: existing file has identical content → skip silently.
+            // Case 2: existing file has identical content �?skip silently.
             var existingHash = Sha256OfFile(dst);
             if (existingHash == newHash)
             {
@@ -1814,8 +1814,8 @@ namespace PSDImporter.Editor
             int choice = EditorUtility.DisplayDialogComplex(
                 title:   "Image already exists",
                 message: $"'{Path.GetFileName(dst)}' already exists and is different from the new image.\n\n" +
-                         $"Existing: {existingHash.Substring(0, 16)}…  ({new FileInfo(dst).Length / 1024} KB)\n" +
-                         $"New:      {newHash.Substring(0, 16)}…  ({new FileInfo(src).Length / 1024} KB)\n\n" +
+                         $"Existing: {existingHash.Substring(0, 16)}�? ({new FileInfo(dst).Length / 1024} KB)\n" +
+                         $"New:      {newHash.Substring(0, 16)}�? ({new FileInfo(src).Length / 1024} KB)\n\n" +
                          "Overwrite?",
                 ok:      "Yes",
                 cancel:  "No",
@@ -1843,7 +1843,7 @@ namespace PSDImporter.Editor
         /// <summary>
         /// Copy PNGs from the Python tool's images/ directory that aren't
         /// referenced by any node in the JSON tree. These are export-only
-        /// images (export_ prefix) — sprites meant for direct use by
+        /// images (export_ prefix) �?sprites meant for direct use by
         /// other UI, without a corresponding prefab GameObject.
         /// </summary>
         private static void CopyOrphanExportImages(
@@ -1877,7 +1877,7 @@ namespace PSDImporter.Editor
                     ref overwriteAll, ref noOverwriteAll, out var decision))
                 {
                     Debug.Log($"[PSDImporter] Copied orphan image '{fileName}' " +
-                              $"→ {rootRel}/{psdName}/");
+                              $"�?{rootRel}/{psdName}/");
                 }
                 stats.Add(decision);
             }
@@ -1897,7 +1897,7 @@ namespace PSDImporter.Editor
         /// Read PNG width/height from the file header without decoding
         /// the image. PNG layout: 8-byte magic, then IHDR chunk
         /// (4 bytes length, 4 bytes "IHDR", 4 bytes width, 4 bytes
-        /// height — all big-endian). Returns (0, 0) for non-PNG or
+        /// height �?all big-endian). Returns (0, 0) for non-PNG or
         /// truncated files; the caller can decide to fall back to
         /// LoadImage.
         /// </summary>
