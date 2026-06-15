@@ -5,7 +5,6 @@ using Cysharp.Threading.Tasks;
 using Fuel.Launcher.Config;
 using Fuel.Launcher.HybridCLR;
 using Fuel.Launcher.Resources;
-using Fuel.Launcher.Table;
 using Fuel.Launcher.Version;
 
 namespace Fuel.Launcher
@@ -18,7 +17,6 @@ namespace Fuel.Launcher
         private readonly IAppUpdateHandler _appUpdateHandler;
         private readonly IResourceUpdateService _resourceUpdateService;
         private readonly IHybridCLRLoader _hybridCLRLoader;
-        private readonly IConfigLoader _configLoader;
 
         public event Action<StartupStep> StepChanged;
         public event Action<float> DownloadProgressChanged;
@@ -29,8 +27,7 @@ namespace Fuel.Launcher
             IAppVersionChecker versionChecker,
             IAppUpdateHandler appUpdateHandler,
             IResourceUpdateService resourceUpdateService,
-            IHybridCLRLoader hybridCLRLoader,
-            IConfigLoader configLoader)
+            IHybridCLRLoader hybridCLRLoader)
         {
             _configProvider = configProvider;
             _versionService = versionService;
@@ -38,7 +35,6 @@ namespace Fuel.Launcher
             _appUpdateHandler = appUpdateHandler;
             _resourceUpdateService = resourceUpdateService;
             _hybridCLRLoader = hybridCLRLoader;
-            _configLoader = configLoader;
         }
 
         public async UniTask RunAsync(CancellationToken cancellationToken)
@@ -80,9 +76,6 @@ namespace Fuel.Launcher
                 SetStep(StartupStep.LoadHotUpdateDll);
                 Assembly hotUpdateAssembly = await _hybridCLRLoader.LoadHotUpdateAssemblyAsync(localConfig, cancellationToken);
 
-                SetStep(StartupStep.LoadConfigs);
-                await _configLoader.LoadAsync(localConfig, cancellationToken);
-
                 SetStep(StartupStep.EnterGame);
                 await InvokeHotUpdateEntryAsync(hotUpdateAssembly, localConfig, cancellationToken);
             }
@@ -100,7 +93,7 @@ namespace Fuel.Launcher
             if (method == null)
                 throw new MissingMethodException(config.hotUpdateEntryType, config.hotUpdateEntryMethod);
 
-            var result = method.Invoke(null, new object[] { cancellationToken });
+            var result = method.Invoke(null, new object[] { config, cancellationToken });
             if (result is UniTask task)
                 await task;
         }

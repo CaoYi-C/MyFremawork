@@ -10,7 +10,6 @@ namespace Fuel.Launcher
         UpdateAssets,
         LoadAotMetadata,
         LoadHotUpdateDll,
-        LoadConfigs,
         EnterGame,
         Failed
     }

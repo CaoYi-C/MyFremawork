@@ -13,7 +13,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Luban;
 using UnityEngine;
-#if YOKIFRAME_UNITASK_SUPPORT
+#if UNITASK_SUPPORT
 using Cysharp.Threading.Tasks;
 #endif
 
@@ -152,7 +152,7 @@ public static class TableKit
 
     #endregion
 
-#if YOKIFRAME_UNITASK_SUPPORT
+#if UNITASK_SUPPORT
 
     #region 异步加载
 
@@ -331,7 +331,7 @@ public static class TableKit
         onComplete?.Invoke();
     }
 
-#if YOKIFRAME_UNITASK_SUPPORT
+#if UNITASK_SUPPORT
     /// <summary>
     /// 异步重新加载配置表
     /// </summary>

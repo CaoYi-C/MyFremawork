@@ -6,7 +6,6 @@ using Fuel.Launcher;
 using Fuel.Launcher.Config;
 using Fuel.Launcher.HybridCLR;
 using Fuel.Launcher.Resources;
-using Fuel.Launcher.Table;
 using Fuel.Launcher.Version;
 using UnityEngine;
 
@@ -38,8 +37,7 @@ public sealed class StartupPipelinePlayerSmokeTest : MonoBehaviour
                 new SemanticAppVersionChecker(),
                 new DefaultAppUpdateHandler(),
                 new YooAssetResourceUpdateService(),
-                new HybridCLRLoader(),
-                new TableKitConfigLoader());
+                new HybridCLRLoader());
 
             pipeline.StepChanged += step => Log("STEP " + step);
             pipeline.DownloadProgressChanged += progress => Log("DOWNLOAD " + progress.ToString("P1"));
