@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using Cysharp.Threading.Tasks;
@@ -14,18 +15,25 @@ namespace Fuel.Launcher.HybridCLR
 {
     public sealed class HybridCLRLoader : IHybridCLRLoader
     {
+        private const string DefaultAotMetadataListPath = "AOTMetadataDllList.bytes";
+
         public async UniTask LoadAotMetadataAsync(LocalStartupConfig localConfig, CancellationToken cancellationToken)
         {
-            if (localConfig.aotMetadataDllPaths == null)
+            var aotMetadataDllPaths = await LoadAotMetadataListAsync(localConfig.packageName, cancellationToken);
+            if (aotMetadataDllPaths == null || aotMetadataDllPaths.Length == 0)
+                aotMetadataDllPaths = localConfig.aotMetadataDllPaths;
+
+            if (aotMetadataDllPaths == null)
                 return;
 
-            for (int i = 0; i < localConfig.aotMetadataDllPaths.Length; i++)
+            for (int i = 0; i < aotMetadataDllPaths.Length; i++)
             {
-                var path = localConfig.aotMetadataDllPaths[i];
+                var path = aotMetadataDllPaths[i];
                 if (string.IsNullOrEmpty(path))
                     continue;
 
-                var bytes = await LoadBytesAsync(localConfig.packageName, path, cancellationToken);
+                var fileName = GetFileName(path);
+                var bytes = await LoadBytesAsync(localConfig.packageName, fileName, cancellationToken);
 #if !UNITY_EDITOR && HYBRIDCLR
                 RuntimeApi.LoadMetadataForAOTAssembly(bytes, HomologousImageMode.SuperSet);
 #endif
@@ -34,9 +42,10 @@ namespace Fuel.Launcher.HybridCLR
 
         public async UniTask<Assembly> LoadHotUpdateAssemblyAsync(LocalStartupConfig localConfig, CancellationToken cancellationToken)
         {
-            var bytes = await LoadBytesAsync(localConfig.packageName, localConfig.hotUpdateDllPath, cancellationToken);
+            var hotUpdateDllFileName = GetFileName(localConfig.hotUpdateDllPath);
+            var bytes = await LoadBytesAsync(localConfig.packageName, hotUpdateDllFileName, cancellationToken);
 #if UNITY_EDITOR
-            var assemblyName = System.IO.Path.GetFileNameWithoutExtension(localConfig.hotUpdateDllPath);
+            var assemblyName = System.IO.Path.GetFileNameWithoutExtension(hotUpdateDllFileName);
             assemblyName = assemblyName.Replace(".dll", string.Empty).Replace(".bytes", string.Empty);
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
@@ -47,16 +56,55 @@ namespace Fuel.Launcher.HybridCLR
             return Assembly.Load(bytes);
         }
 
-        private static async UniTask<byte[]> LoadBytesAsync(string packageName, string path, CancellationToken cancellationToken)
+        private static async UniTask<string[]> LoadAotMetadataListAsync(string packageName, CancellationToken cancellationToken)
         {
+            try
+            {
+                var text = await LoadTextAsync(packageName, DefaultAotMetadataListPath, cancellationToken);
+                if (string.IsNullOrWhiteSpace(text))
+                    return Array.Empty<string>();
+
+                return text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(GetFileName)
+                    .ToArray();
+            }
+            catch
+            {
+                return Array.Empty<string>();
+            }
+        }
+
+        private static async UniTask<string> LoadTextAsync(string packageName, string path, CancellationToken cancellationToken)
+        {
+            var assetFileName = GetFileName(path);
             var package = YooAssets.GetPackage(packageName);
-            var handle = package.LoadAssetAsync<TextAsset>(path);
+            var handle = package.LoadAssetAsync<TextAsset>(assetFileName);
             try
             {
                 await handle.ToUniTask(cancellationToken: cancellationToken);
                 var asset = handle.GetAssetObject<TextAsset>();
                 if (asset == null)
-                    throw new InvalidOperationException($"Load bytes failed: {path}");
+                    throw new InvalidOperationException($"Load text failed: {assetFileName}");
+
+                return asset.text;
+            }
+            finally
+            {
+                handle.Release();
+            }
+        }
+
+        private static async UniTask<byte[]> LoadBytesAsync(string packageName, string path, CancellationToken cancellationToken)
+        {
+            var assetFileName = GetFileName(path);
+            var package = YooAssets.GetPackage(packageName);
+            var handle = package.LoadAssetAsync<TextAsset>(assetFileName);
+            try
+            {
+                await handle.ToUniTask(cancellationToken: cancellationToken);
+                var asset = handle.GetAssetObject<TextAsset>();
+                if (asset == null)
+                    throw new InvalidOperationException($"Load bytes failed: {assetFileName}");
 
                 var bytes = asset.bytes;
                 var result = new byte[bytes.Length];
@@ -67,6 +115,11 @@ namespace Fuel.Launcher.HybridCLR
             {
                 handle.Release();
             }
+        }
+
+        private static string GetFileName(string path)
+        {
+            return string.IsNullOrEmpty(path) ? path : System.IO.Path.GetFileName(path);
         }
     }
 }

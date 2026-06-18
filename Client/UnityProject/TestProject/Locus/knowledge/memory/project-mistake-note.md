@@ -11,7 +11,7 @@ readOnly: false
 aiMaintained: true
 explicitMaintenanceRules: true
 createdAt: 1778427694230
-updatedAt: 1781255547296
+updatedAt: 1781768681798
 ---
 
 # project-mistake-note
@@ -29,4 +29,5 @@ Remove outdated issues, non-reproducible issues, and unsupported guesses
 - YooAsset 版本的下载进度事件类型是 `DownloadProgressChangedEventArgs`，不要误用旧/其他版本的 `DownloadUpdateData`。
 - `GameObjectPool.InitSync/InitAsync` 必须校验 YooAsset `AssetHandle` 有效且成功后再 `InstantiateSync/Async`；加载地址无效时直接实例化会触发空引用。
 - YooAsset `Initialize()` 会调用 `DontDestroyOnLoad`，不能在 Edit Mode 的 `unity_execute` 中直接跑启动管线；应进入 Play Mode 验证。若已有系统初始化过 `Main` 包，启动资源更新服务需复用已成功初始化的包，避免二次 `InitializePackageAsync` 报错。
+- YooAsset `Assets/BundleCollectorSetting.asset` 中同一个资源路径不能被多个启用的 Collector 重复收集；否则 EditorSimulateBuildPipeline 会报 `Collecting asset file already exists`。新增 Character/AnimController 分组时只保留各自目录，不要重复包含 `Assets/AssetsPackage/Depend` 或 `Assets/AssetsPackage/Main/Character`。
 <!-- locus:body:end -->

@@ -2,7 +2,10 @@
     "name": "Fuel.Editor",
     "rootNamespace": "Fuel.Editor",
     "references": [
-        "Fuel"
+        "Fuel",
+        "HybridCLR.Editor",
+        "YooAsset",
+        "YooAsset.Editor"
     ],
     "includePlatforms": [
         "Editor"

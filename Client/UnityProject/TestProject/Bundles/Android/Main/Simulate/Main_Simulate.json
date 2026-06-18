@@ -10,22 +10,222 @@
     "BuildPipeline": "EditorSimulateBuildPipeline",
     "PackageName": "Main",
     "PackageVersion": "Simulate",
-    "PackageNote": "2026/6/12 17:11:24",
+    "PackageNote": "2026/6/18 15:48:04",
     "AssetList": [
         {
-            "Address": "HotUpdate.dll",
-            "AssetPath": "Assets/AssetsPackage/Main/Code/HotUpdate.dll.bytes",
+            "Address": "AngryPig",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/AngryPig.controller",
             "AssetGuid": "",
             "AssetTags": [],
             "BundleID": 0,
             "DependentBundleIDs": []
         },
         {
-            "Address": "test_textitems",
-            "AssetPath": "Assets/AssetsPackage/Main/Code/test_textitems.bytes",
+            "Address": "Bat",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Bat.controller",
             "AssetGuid": "",
             "AssetTags": [],
             "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Bee",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Bee.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "BlueBird",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/BlueBird.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Bunny",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Bunny.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Chameleon",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Chameleon.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Chicken",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Chicken.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Duck",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Duck.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "FatBird",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/FatBird.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Ghost",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Ghost.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Mushroom",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Mushroom.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Plant",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Plant.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Radish",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Radish.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Rino",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Rino.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Rocks",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Rocks.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Skull",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Skull.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Slime",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Slime.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Snail",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Snail.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Trunk",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Trunk.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Turtle",
+            "AssetPath": "Assets/AssetsPackage/Main/AnimController/Turtle.controller",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 0,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "CharacterLoader",
+            "AssetPath": "Assets/AssetsPackage/Main/Character/CharacterLoader.prefab",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 1,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "AOTMetadataDllList",
+            "AssetPath": "Assets/AssetsPackage/Main/Code/AOT/AOTMetadataDllList.bytes",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 2,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "mscorlib.dll",
+            "AssetPath": "Assets/AssetsPackage/Main/Code/AOT/mscorlib.dll.bytes",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 2,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "System.Core.dll",
+            "AssetPath": "Assets/AssetsPackage/Main/Code/AOT/System.Core.dll.bytes",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 2,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "System.dll",
+            "AssetPath": "Assets/AssetsPackage/Main/Code/AOT/System.dll.bytes",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 2,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "HotUpdate.dll",
+            "AssetPath": "Assets/AssetsPackage/Main/Code/HOT/HotUpdate.dll.bytes",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 3,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Test.TableKit.dll",
+            "AssetPath": "Assets/AssetsPackage/Main/Code/HOT/Test.TableKit.dll.bytes",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 3,
             "DependentBundleIDs": []
         },
         {
@@ -33,7 +233,7 @@
             "AssetPath": "Assets/AssetsPackage/Main/RedDot/RedDotConfigAsset.asset",
             "AssetGuid": "",
             "AssetTags": [],
-            "BundleID": 1,
+            "BundleID": 4,
             "DependentBundleIDs": []
         },
         {
@@ -41,7 +241,15 @@
             "AssetPath": "Assets/AssetsPackage/Main/Scene/SampleScene.unity",
             "AssetGuid": "",
             "AssetTags": [],
-            "BundleID": 2,
+            "BundleID": 5,
+            "DependentBundleIDs": []
+        },
+        {
+            "Address": "Test",
+            "AssetPath": "Assets/AssetsPackage/Main/Scene/Test.unity",
+            "AssetGuid": "",
+            "AssetTags": [],
+            "BundleID": 5,
             "DependentBundleIDs": []
         },
         {
@@ -49,17 +257,47 @@
             "AssetPath": "Assets/AssetsPackage/Main/UIPrefab/TestPanel.prefab",
             "AssetGuid": "",
             "AssetTags": [],
-            "BundleID": 3,
+            "BundleID": 6,
             "DependentBundleIDs": []
         }
     ],
     "BundleList": [
         {
-            "BundleName": "assets_assetspackage_main_code.bundle",
+            "BundleName": "assets_assetspackage_main_animcontroller.bundle",
             "UnityCrc": 0,
-            "FileHash": "580699c45a051a4d070ca77f6ffd52b4",
+            "FileHash": "d1101728894682cad70b807119097cb2",
             "FileCrc": 0,
-            "FileSize": 5159,
+            "FileSize": 95262,
+            "IsEncrypted": false,
+            "Tags": [],
+            "DependentBundleIDs": []
+        },
+        {
+            "BundleName": "assets_assetspackage_main_character.bundle",
+            "UnityCrc": 0,
+            "FileHash": "65b6c724529b332093de5a40d29c3a19",
+            "FileCrc": 0,
+            "FileSize": 6324,
+            "IsEncrypted": false,
+            "Tags": [],
+            "DependentBundleIDs": []
+        },
+        {
+            "BundleName": "assets_assetspackage_main_code_aot.bundle",
+            "UnityCrc": 0,
+            "FileHash": "eca7b303ca7414b08559c8aa946a9a4c",
+            "FileCrc": 0,
+            "FileSize": 2411069,
+            "IsEncrypted": false,
+            "Tags": [],
+            "DependentBundleIDs": []
+        },
+        {
+            "BundleName": "assets_assetspackage_main_code_hot.bundle",
+            "UnityCrc": 0,
+            "FileHash": "ddfc8ad9fa6c3c87ab75f8f9e7b9029f",
+            "FileCrc": 0,
+            "FileSize": 27136,
             "IsEncrypted": false,
             "Tags": [],
             "DependentBundleIDs": []
@@ -79,7 +317,7 @@
             "UnityCrc": 0,
             "FileHash": "63561b8aa41234a28f6d6e613d895f0e",
             "FileCrc": 0,
-            "FileSize": 7874,
+            "FileSize": 31085,
             "IsEncrypted": false,
             "Tags": [],
             "DependentBundleIDs": []
