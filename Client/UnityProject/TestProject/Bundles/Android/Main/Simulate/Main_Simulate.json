@@ -10,7 +10,7 @@
     "BuildPipeline": "EditorSimulateBuildPipeline",
     "PackageName": "Main",
     "PackageVersion": "Simulate",
-    "PackageNote": "2026/6/18 15:48:04",
+    "PackageNote": "2026/6/22 16:17:57",
     "AssetList": [
         {
             "Address": "AngryPig",
@@ -277,7 +277,7 @@
             "UnityCrc": 0,
             "FileHash": "65b6c724529b332093de5a40d29c3a19",
             "FileCrc": 0,
-            "FileSize": 6324,
+            "FileSize": 6360,
             "IsEncrypted": false,
             "Tags": [],
             "DependentBundleIDs": []
@@ -317,7 +317,7 @@
             "UnityCrc": 0,
             "FileHash": "63561b8aa41234a28f6d6e613d895f0e",
             "FileCrc": 0,
-            "FileSize": 31085,
+            "FileSize": 31809,
             "IsEncrypted": false,
             "Tags": [],
             "DependentBundleIDs": []

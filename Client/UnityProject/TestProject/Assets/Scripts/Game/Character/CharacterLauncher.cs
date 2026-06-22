@@ -2,6 +2,7 @@
 using Fuel.AssetManager;
 #endif
 using Cysharp.Threading.Tasks;
+using Game.Visual;
 using UnityEngine;
 using YooAsset;
 
@@ -21,9 +22,12 @@ namespace Game.Character
         [Header("Controller Settings")]
         public float MoveSpeed = 5f;
         public float JumpForce = 10f;
+        public int MaxJumpCount = 2;
         public float WallSlideSpeed = 1.5f;
         public float WallJumpHorizontalForce = 6f;
         public float WallJumpVerticalForce = 10f;
+        public float WallExitPush = 3f;
+        public float WallClimbExitCooldown = 0.3f;
 
         private CharacterController2D _controller;
 
@@ -46,6 +50,7 @@ namespace Game.Character
             var prefab = prefabHandle.AssetObject as GameObject;
             var instance = Instantiate(prefab);
             instance.name = "Character";
+            BindFocusBrightnessEffect(instance.transform);
 
             // 把角色放到场景原点稍上方
             instance.transform.position = new Vector3(0, 2, 0);
@@ -69,11 +74,24 @@ namespace Game.Character
             {
                 MoveSpeed = MoveSpeed,
                 JumpForce = JumpForce,
+                MaxJumpCount = MaxJumpCount,
                 WallSlideSpeed = WallSlideSpeed,
                 WallJumpHorizontalForce = WallJumpHorizontalForce,
                 WallJumpVerticalForce = WallJumpVerticalForce,
+                WallExitPush = WallExitPush,
+                WallClimbExitCooldown = WallClimbExitCooldown,
             };
             _controller.Bind(instance, animCtrl);
+        }
+
+        private void BindFocusBrightnessEffect(Transform character)
+        {
+            var mainCamera = Camera.main;
+            if (mainCamera == null) return;
+
+            var effect = mainCamera.GetComponent<CharacterFocusBrightnessEffect>();
+            if (effect != null)
+                effect.Target = character;
         }
 
         private void Update()
@@ -81,7 +99,8 @@ namespace Game.Character
             if (_controller == null || !_controller.IsBound) return;
 
             float h = Input.GetAxis("Horizontal");
-            _controller.Move(h);
+            float v = Input.GetAxis("Vertical");
+            _controller.Move(h, v);
 
             if (Input.GetButtonDown("Jump"))
                 _controller.Jump();

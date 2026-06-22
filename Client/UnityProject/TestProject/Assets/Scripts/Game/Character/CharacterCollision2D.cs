@@ -63,11 +63,18 @@ namespace Game.Character
         private void DetectGround()
         {
             Bounds bounds = _collider.bounds;
-            Vector2 origin = new Vector2(bounds.center.x, bounds.min.y);
             Vector2 size = new Vector2(bounds.size.x * _groundCheckWidth, _groundCheckDistance);
-            RaycastHit2D hit = Physics2D.BoxCast(origin, size, 0f, Vector2.down, _groundCheckDistance, _groundLayer);
+            Vector2 origin = new Vector2(bounds.center.x, bounds.min.y + _groundCheckDistance);
+            RaycastHit2D[] hits = Physics2D.BoxCastAll(origin, size, 0f, Vector2.down, _groundCheckDistance * 2f, _groundLayer);
 
-            bool grounded = hit.collider != null;
+            bool grounded = false;
+            foreach (var hit in hits)
+            {
+                if (hit.collider == _collider) continue;
+                if (hit.distance <= 0f) continue;
+                grounded = true;
+                break;
+            }
             SetGrounded(grounded);
         }
 
@@ -75,23 +82,38 @@ namespace Game.Character
         {
             Bounds bounds = _collider.bounds;
             float direction = FacingDirection;
+            Vector2 size = new Vector2(_wallCheckDistance, bounds.size.y * 0.8f);
             Vector2 origin = new Vector2(
-                bounds.center.x + direction * bounds.extents.x,
+                bounds.center.x,
                 bounds.center.y + _wallCheckHeightOffset);
-            RaycastHit2D hit = Physics2D.Raycast(origin, Vector2.right * direction, _wallCheckDistance, _groundLayer);
+            RaycastHit2D[] hits = Physics2D.BoxCastAll(origin, size, 0f, Vector2.right * direction, bounds.extents.x + _wallCheckDistance, _groundLayer);
 
-            bool touchingWall = hit.collider != null && !hit.collider.isTrigger;
+            bool touchingWall = false;
+            foreach (var hit in hits)
+            {
+                if (hit.collider == _collider) continue;
+                if (hit.collider.isTrigger) continue;
+                if (hit.distance <= 0f) continue;
+                touchingWall = true;
+                break;
+            }
             SetWallContact(touchingWall);
         }
 
         private void DetectCeiling()
         {
             Bounds bounds = _collider.bounds;
-            Vector2 origin = new Vector2(bounds.center.x, bounds.max.y);
             Vector2 size = new Vector2(bounds.size.x * _ceilingCheckWidth, _ceilingCheckDistance);
-            RaycastHit2D hit = Physics2D.BoxCast(origin, size, 0f, Vector2.up, _ceilingCheckDistance, _groundLayer);
+            Vector2 center = new Vector2(bounds.center.x, bounds.max.y + _ceilingCheckDistance * 0.5f);
+            Collider2D[] hits = Physics2D.OverlapBoxAll(center, size, 0f, _groundLayer);
 
-            bool touchingCeiling = hit.collider != null;
+            bool touchingCeiling = false;
+            foreach (var col in hits)
+            {
+                if (col == _collider) continue;
+                touchingCeiling = true;
+                break;
+            }
             SetCeilingContact(touchingCeiling);
         }
 

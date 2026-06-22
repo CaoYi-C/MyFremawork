@@ -10,7 +10,7 @@ readOnly: false
 aiMaintained: true
 explicitMaintenanceRules: true
 createdAt: 1778427694231
-updatedAt: 1778427694231
+updatedAt: 1782114886592
 ---
 
 # user-preference
@@ -24,4 +24,5 @@ updatedAt: 1778427694231
 <!-- locus:maintain-rules:end -->
 
 <!-- locus:body:start -->
+- 后续如果需要切换 Unity 编辑器状态（进入/退出 Play��暂停等），先给用户选择并等用户确认后再切换。
 <!-- locus:body:end -->

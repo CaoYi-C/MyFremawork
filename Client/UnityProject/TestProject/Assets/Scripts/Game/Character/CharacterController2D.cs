@@ -23,12 +23,18 @@ namespace Game.Character
         public float WallSlideSpeed = 1.5f;
         public float WallJumpHorizontalForce = 6f;
         public float WallJumpVerticalForce = 10f;
+        public float WallClimbSpeed = 3f;
+        public float WallExitPush = 3f;
+        public int MaxJumpCount = 2;
         public float GroundDamping = 8f;
         public float AirDamping = 2f;
         public float FallGravityMultiplier = 2.5f;
 
         /// <summary>壁跳后短时间内禁止反向输入吸墙</summary>
         public float WallJumpCooldown = 0.25f;
+
+        /// <summary>退出攀爬后禁止重新攀爬的冷却时间</summary>
+        public float WallClimbExitCooldown = 0.3f;
 
         // ── Animator状态名称（可按项目实际动画状态配置）──
         public string AnimStateIdle = "Idle";
@@ -38,16 +44,23 @@ namespace Game.Character
 
         // ── 内部状态 ──
         private float _moveInput;
+        private float _climbInput;
         private bool _jumpQueued;
+        private int _jumpCount;
         private bool _isGrounded;
         private bool _isTouchingWall;
         private bool _isWallSliding;
+        private bool _isWallClimbing;
+        private bool _wallClimbJumped;
         private float _wallJumpTimer;
+        private float _wallClimbExitTimer;
         private int _facingDirection = 1;
 
         public bool IsGrounded => _isGrounded;
         public bool IsTouchingWall => _isTouchingWall;
         public bool IsWallSliding => _isWallSliding;
+        public bool IsWallClimbing => _isWallClimbing;
+        public int JumpCount => _jumpCount;
         public int FacingDirection => _facingDirection;
         public bool IsBound => _transform != null;
 
@@ -76,6 +89,9 @@ namespace Game.Character
             {
                 _collision.OnGroundedChanged += HandleGroundedChanged;
                 _collision.OnWallContactChanged += HandleWallContactChanged;
+                // Sync initial state (events may have fired before subscription)
+                HandleGroundedChanged(_collision.IsGrounded);
+                HandleWallContactChanged(_collision.IsTouchingWall);
             }
 
             // 查找Visual子节点上的Animator
@@ -113,10 +129,11 @@ namespace Game.Character
             _collision = null;
         }
 
-        /// <summary>设置水平移动输入。正值=右，负值=左，0=不动</summary>
-        public void Move(float horizontal)
+        /// <summary>设置移动输入。horizontal: 正=右负=左，vertical: 正=上下=下（爬墙时使用）</summary>
+        public void Move(float horizontal, float vertical = 0f)
         {
             _moveInput = Mathf.Clamp(horizontal, -1f, 1f);
+            _climbInput = Mathf.Clamp(vertical, -1f, 1f);
         }
 
         /// <summary>请求跳跃（会被下一帧FixedUpdate消费）</summary>
@@ -144,8 +161,10 @@ namespace Game.Character
             if (!IsBound) return;
 
             _wallJumpTimer -= deltaTime;
+            _wallClimbExitTimer -= deltaTime;
 
             ApplyHorizontalMovement(deltaTime);
+            ApplyWallClimb();
             ApplyWallSlide();
             ApplyJump();
             ApplyGravity();
@@ -166,8 +185,43 @@ namespace Game.Character
             _rigidbody.velocity = new Vector2(newX, _rigidbody.velocity.y);
         }
 
+        private void ApplyWallClimb()
+        {
+            if (_wallClimbExitTimer > 0f)
+            {
+                _isWallClimbing = false;
+                return;
+            }
+
+            bool canClimb = _isTouchingWall && !_isGrounded
+                            && Mathf.Abs(_climbInput) > 0.01f;
+
+            bool wasClimbing = _isWallClimbing;
+
+            if (canClimb && _wallJumpTimer <= 0f)
+            {
+                _isWallClimbing = true;
+                _isWallSliding = false;
+                _rigidbody.velocity = new Vector2(_rigidbody.velocity.x, _climbInput * WallClimbSpeed);
+            }
+            else
+            {
+                _isWallClimbing = false;
+            }
+
+            if (wasClimbing && !_isWallClimbing)
+            {
+                _wallClimbExitTimer = WallClimbExitCooldown;
+                float pushDir = _facingDirection;
+                _rigidbody.velocity = new Vector2(pushDir * WallExitPush, _rigidbody.velocity.y);
+            }
+        }
+
         private void ApplyWallSlide()
         {
+            if (_isWallClimbing) return;
+            if (_wallClimbExitTimer > 0f) return;
+
             bool canWallSlide = _isTouchingWall && !_isGrounded && _moveInput != 0
                                 && Mathf.Sign(_moveInput) == _facingDirection;
 
@@ -191,20 +245,38 @@ namespace Game.Character
 
             if (_isGrounded)
             {
+                _jumpCount = 1;
                 _rigidbody.velocity = new Vector2(_rigidbody.velocity.x, JumpForce);
+            }
+            else if (_isWallClimbing && !_wallClimbJumped)
+            {
+                _wallClimbJumped = true;
+                _isWallClimbing = false;
+                _wallJumpTimer = WallJumpCooldown;
+                float jumpDirX = -_facingDirection * WallJumpHorizontalForce;
+                _rigidbody.velocity = new Vector2(jumpDirX, WallJumpVerticalForce);
+                Flip();
             }
             else if (_isWallSliding)
             {
                 _wallJumpTimer = WallJumpCooldown;
                 _isWallSliding = false;
+                _jumpCount = 1;
                 float jumpDirX = -_facingDirection * WallJumpHorizontalForce;
                 _rigidbody.velocity = new Vector2(jumpDirX, WallJumpVerticalForce);
                 Flip();
+            }
+            else if (_jumpCount < MaxJumpCount)
+            {
+                _jumpCount++;
+                _rigidbody.velocity = new Vector2(_rigidbody.velocity.x, JumpForce);
             }
         }
 
         private void ApplyGravity()
         {
+            if (_isWallClimbing) return;
+
             if (_rigidbody.velocity.y < 0 && !_isWallSliding)
             {
                 float extraGravity = Physics2D.gravity.y * (FallGravityMultiplier - 1f);
@@ -217,12 +289,14 @@ namespace Game.Character
             if (_isWallSliding) return;
             if (_wallJumpTimer > 0f) return;
 
-            if (_moveInput > 0.01f && _facingDirection != 1)
+            float input = _isWallClimbing ? _climbInput : _moveInput;
+
+            if (input > 0.01f && _facingDirection != 1)
             {
                 _facingDirection = 1;
                 _transform.localScale = new Vector3(1, 1, 1);
             }
-            else if (_moveInput < -0.01f && _facingDirection != -1)
+            else if (input < -0.01f && _facingDirection != -1)
             {
                 _facingDirection = -1;
                 _transform.localScale = new Vector3(-1, 1, 1);
@@ -240,7 +314,9 @@ namespace Game.Character
             if (_animator == null) return;
 
             string targetState;
-            if (!_isGrounded && (_isWallSliding || _isTouchingWall))
+            if (!_isGrounded && _isWallClimbing)
+                targetState = AnimStateRun;
+            else if (!_isGrounded && (_isWallSliding || _isTouchingWall))
                 targetState = AnimStateIdle;
             else if (!_isGrounded)
                 targetState = AnimStateJump;
@@ -262,6 +338,8 @@ namespace Game.Character
             if (grounded)
             {
                 _isWallSliding = false;
+                _wallClimbJumped = false;
+                _jumpCount = 0;
                 _wallJumpTimer = 0f;
             }
         }
@@ -270,7 +348,11 @@ namespace Game.Character
         {
             _isTouchingWall = touchingWall;
             if (!touchingWall)
+            {
                 _isWallSliding = false;
+                _isWallClimbing = false;
+                _wallClimbJumped = false;
+            }
         }
     }
 }
