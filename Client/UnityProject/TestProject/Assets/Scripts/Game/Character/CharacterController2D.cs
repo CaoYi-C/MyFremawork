@@ -252,10 +252,21 @@ namespace Game.Character
             {
                 _wallClimbJumped = true;
                 _isWallClimbing = false;
+                _jumpCount = MaxJumpCount;
                 _wallJumpTimer = WallJumpCooldown;
-                float jumpDirX = -_facingDirection * WallJumpHorizontalForce;
+                float jumpDirX = _moveInput * WallJumpHorizontalForce;
                 _rigidbody.velocity = new Vector2(jumpDirX, WallJumpVerticalForce);
-                Flip();
+
+                if (jumpDirX > 0.01f && _facingDirection != 1)
+                {
+                    _facingDirection = 1;
+                    _transform.localScale = new Vector3(1, 1, 1);
+                }
+                else if (jumpDirX < -0.01f && _facingDirection != -1)
+                {
+                    _facingDirection = -1;
+                    _transform.localScale = new Vector3(-1, 1, 1);
+                }
             }
             else if (_isWallSliding)
             {
@@ -286,17 +297,15 @@ namespace Game.Character
 
         private void UpdateFacing()
         {
-            if (_isWallSliding) return;
+            if (_isWallSliding || _isWallClimbing) return;
             if (_wallJumpTimer > 0f) return;
 
-            float input = _isWallClimbing ? _climbInput : _moveInput;
-
-            if (input > 0.01f && _facingDirection != 1)
+            if (_moveInput > 0.01f && _facingDirection != 1)
             {
                 _facingDirection = 1;
                 _transform.localScale = new Vector3(1, 1, 1);
             }
-            else if (input < -0.01f && _facingDirection != -1)
+            else if (_moveInput < -0.01f && _facingDirection != -1)
             {
                 _facingDirection = -1;
                 _transform.localScale = new Vector3(-1, 1, 1);
