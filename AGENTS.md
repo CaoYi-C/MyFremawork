@@ -6,7 +6,7 @@ Unity game framework ("Fuel") with C# TCP server. Three top-level directories:
 
 - `Client/UnityProject/TestProject/` — Unity project (the main workspace)
 - `Server/C#Server/TestTcpServer/` — .NET 8 game server (GameServer)
-- `Common/ExcelTool/` — Luban config table generation from Excel
+- `Client/UnityProject/TestProject/Assets/Scripts/Fuel/.Common/ExcelTool/` — Luban config table generation from Excel (`.Common` 是 dot 前缀,Unity 不会扫描)
 
 ## Key tech stack
 
@@ -18,7 +18,7 @@ Unity game framework ("Fuel") with C# TCP server. Three top-level directories:
 
 ### Luban config generation
 ```bat
-cd Common\ExcelTool\Excels\DataTables
+cd Client\UnityProject\TestProject\Assets\Scripts\Fuel\.Common\ExcelTool\Excels\DataTables
 gen.bat
 ```
 Runs `dotnet Luban.dll -t all -d json --conf luban.conf`. Outputs to `output/`. The `-t all` target includes both `client` (group `c`) and `server` (group `s`) outputs.
@@ -98,7 +98,7 @@ Mark static methods with `[NetMessageHandler(typeof(ResponseType))]` or `[NetMes
 3. Bind to prefab via the editor window
 
 ### Luban config tables
-Excel files in `Common/ExcelTool/Excels/DataTables/Datas/`. Schema in `__tables__.xlsx`, `__beans__.xlsx`, `__enums__.xlsx`. Run `gen.bat` to regenerate.
+Excel files in `Client/UnityProject/TestProject/Assets/Scripts/Fuel/.Common/ExcelTool/Excels/DataTables/Datas/`. Schema in `__tables__.xlsx`, `__beans__.xlsx`, `__enums__.xlsx`. Run `gen.bat` to regenerate.
 
 ## Conventions
 

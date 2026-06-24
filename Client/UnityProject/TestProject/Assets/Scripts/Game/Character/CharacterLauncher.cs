@@ -2,6 +2,7 @@
 using Fuel.AssetManager;
 #endif
 using Cysharp.Threading.Tasks;
+using Game.Character.Skills;
 using Game.Visual;
 using UnityEngine;
 using YooAsset;
@@ -29,7 +30,12 @@ namespace Game.Character
         public float WallExitPush = 3f;
         public float WallClimbExitCooldown = 0.3f;
 
+        [Header("Blink Skill")]
+        public float BlinkCooldown = 2f;
+        public float BlinkDistance = 6f;
+
         private CharacterController2D _controller;
+        private SkillHUD _skillHUD;
 
         private async void Start()
         {
@@ -82,6 +88,18 @@ namespace Game.Character
                 WallClimbExitCooldown = WallClimbExitCooldown,
             };
             _controller.Bind(instance, animCtrl);
+
+            // ── 注册闪烁技能 ──
+            var blink = new BlinkSkill
+            {
+                Cooldown = BlinkCooldown,
+                BlinkDistance = BlinkDistance,
+            };
+            _controller.Skills.RegisterSkill(blink);
+
+            // ── 创建技能栏 UI ──
+            _skillHUD = new GameObject("SkillHUD").AddComponent<SkillHUD>();
+            _skillHUD.Initialize(_controller.Skills);
         }
 
         private void BindFocusBrightnessEffect(Transform character)
@@ -105,6 +123,10 @@ namespace Game.Character
             if (Input.GetButtonDown("Jump"))
                 _controller.Jump();
 
+            // Q 键触发闪烁
+            if (Input.GetKeyDown(KeyCode.Q))
+                _controller.Skills.TryActivate("Blink");
+
             _controller.Update(Time.deltaTime);
         }
 
@@ -116,6 +138,7 @@ namespace Game.Character
 
         private void OnDestroy()
         {
+            if (_skillHUD != null) Destroy(_skillHUD.gameObject);
             _controller?.Unbind();
             _controller = null;
         }

@@ -703,12 +703,12 @@ public class ProtoBatchWindowAsync : EditorWindow
 
     private void ResetDefaults()
     {
-        batPath = "../../../../Common/ProtoTool/exportProtobuf.bat";
-        protoRoot = "../../../../Common/ProtoTool/Proto";
+        batPath = "Assets/Scripts/Fuel/.Common/ProtoTool/exportProtobuf.bat";
+        protoRoot = "Assets/Scripts/Fuel/.Common/ProtoTool/Proto";
         outRoot = "Assets/Scripts/Generated/Proto";
         md5StatePath = "Assets/Scripts/Generated/.MD5";
-        protocPath = "../../../../Common/ProtoTool/protoc.exe";
-        importRoot = "../../../../Common/ProtoTool/Proto";
+        protocPath = "Assets/Scripts/Fuel/.Common/ProtoTool/protoc.exe";
+        importRoot = "Assets/Scripts/Fuel/.Common/ProtoTool/Proto";
         enableGrpc = false;
         grpcPluginPath = "";
         cleanOutput = false;

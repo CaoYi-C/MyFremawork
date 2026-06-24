@@ -1,4 +1,5 @@
 using System;
+using Game.Character.Skills;
 using UnityEngine;
 
 namespace Game.Character
@@ -15,6 +16,7 @@ namespace Game.Character
         private Rigidbody2D _rigidbody;
         private Animator _animator;
         private CharacterCollision2D _collision;
+        private SkillSystem _skillSystem;
 
         // ── 配置参数 ──
         public float MoveSpeed = 5f;
@@ -62,6 +64,7 @@ namespace Game.Character
         public bool IsWallClimbing => _isWallClimbing;
         public int JumpCount => _jumpCount;
         public int FacingDirection => _facingDirection;
+        public SkillSystem Skills => _skillSystem;
         public bool IsBound => _transform != null;
 
         /// <summary>
@@ -112,6 +115,18 @@ namespace Game.Character
                 _animator.runtimeAnimatorController = animController;
             }
 
+            // 初始化技能系统
+            _skillSystem = _skillSystem ?? new SkillSystem();
+            var ctx = new SkillContext
+            {
+                Transform = _transform,
+                Rigidbody = _rigidbody,
+                Collider = target.GetComponent<Collider2D>(),
+                Collision = _collision,
+                Controller = this,
+            };
+            _skillSystem.Bind(ctx);
+
             _facingDirection = 1;
         }
 
@@ -122,6 +137,8 @@ namespace Game.Character
                 _collision.OnGroundedChanged -= HandleGroundedChanged;
                 _collision.OnWallContactChanged -= HandleWallContactChanged;
             }
+
+            _skillSystem?.Unbind();
 
             _transform = null;
             _rigidbody = null;
@@ -168,6 +185,9 @@ namespace Game.Character
             ApplyWallSlide();
             ApplyJump();
             ApplyGravity();
+
+            // 技能系统 Tick（冷却递减）
+            _skillSystem?.Tick(deltaTime);
         }
 
         // ── 内部逻辑 ──

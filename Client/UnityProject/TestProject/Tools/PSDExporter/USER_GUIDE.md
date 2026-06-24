@@ -32,7 +32,7 @@ python -c "import psd_tools, PIL; print('ok')"
 ### 步骤 3:在 Photoshop 里命名图层
 
 PS 插件(`Ps_UGUI_Rename`)已经把按钮排到了 `窗口 → 扩展 → UGUI 图层命名工具`,
-选中图层点按钮就加前缀(项目里装在 `Common/OtherTools/Ps_UGUI_Rename/`)。
+选中图层点按钮就加前缀(项目里装在 `Assets/Scripts/Fuel/.Common/OtherTools/Ps_UGUI_Rename/`)。
 
 或者你手打:
 
@@ -291,7 +291,7 @@ python -m tests.test_exporter
 1. Python 端:`Tools/PSDExporter/PREFIXES.md`(文档) +
    `psd_exporter/exporter.py` 的 `*_PREFIXES` 常量
 2. C# 端:`Assets/Editor/PSDImporter/PSDNode.cs` 的 `PsdNaming` 静态字段
-3. PS 插件:`Common/OtherTools/Ps_UGUI_Rename/com.ugui.rename/host/UGUI_Rename.jsx`
+3. PS 插件:`Assets/Scripts/Fuel/.Common/OtherTools/Ps_UGUI_Rename/com.ugui.rename/host/UGUI_Rename.jsx`
    的 `UGUI_PREFIXES`
 
 不一致会出现"PS 端改了前缀,Python 端识别不到,Unity 端 UIBind 字段空"
