@@ -1,0 +1,23 @@
+# Go 构建产物
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# 测试产物
+*.test
+*.out
+
+# 生成的 protobuf 代码(从 .proto 源生成,不入库)
+/proto/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# 系统文件
+.DS_Store
+Thumbs.db

@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package commonPB;
-option go_package = "p3server/proto/commonPB";
+option go_package = "testserver/proto/commonPB";
 
 message Attr{
   int64 id = 1;

@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package commonPB;
-option go_package = "p3server/proto/commonPB";
+option go_package = "testserver/proto/commonPB";
 
 enum ItemChangeSource{
   SourceUnknown = 0; // 其他类型

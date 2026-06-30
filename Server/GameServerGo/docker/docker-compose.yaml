@@ -1,0 +1,39 @@
+version: "3"
+
+services:
+  # Redis:用于 due 的用户定位(uid -> gate)
+  redis:
+    image: redis:7-alpine
+    container_name: testserver-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Consul:用于 due 的服务注册/发现
+  consul:
+    image: hashicorp/consul:1.18-alpine
+    container_name: testserver-consul
+    restart: unless-stopped
+    command:
+      - "agent"
+      - "-dev"
+      - "-client=0.0.0.0"
+      - "-ui"
+    ports:
+      - "8500:8500"   # HTTP API + Web UI
+      - "8600:8600/udp" # DNS
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  redis_data:

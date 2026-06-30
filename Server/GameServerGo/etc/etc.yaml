@@ -1,0 +1,39 @@
+# etc.yaml
+# due 集群配置文件。被 gate 和 node 两个进程共享,各自只读自己关心的 key。
+#
+# 注意:由于 due 的 etc 默认从 ./etc 目录加载,
+# 运行 gate/node 时必须在项目根目录(Server/GameServerGo)下运行,
+# 否则找不到这个文件。
+
+# ===== Gate 网关服配置 =====
+etc:
+  cluster:
+    gate:
+      # 客户端接入地址,Unity 客户端连这个
+      addr: ":3553"
+      # 实例 ID,留空则自动生成 UUID
+      id: ""
+      # 同名实例下用户只能绑其中一个;多实例时 name 必须相同
+      name: "gate"
+
+    # ===== Node 逻辑服配置 =====
+    node:
+      id: ""
+      name: "node"
+
+  # ===== 用户定位(Redis)=====
+  locate:
+    redis:
+      addrs:
+        - "127.0.0.1:6379"
+      db: 0
+      password: ""
+      prefix: "testserver:locate:"
+
+  # ===== 服务注册(Consul)=====
+  registry:
+    consul:
+      addr: "127.0.0.1:8500"
+      enableHealthCheck: true
+      healthCheckInterval: 10
+      heartbeatCheckInterval: 5

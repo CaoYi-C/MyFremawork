@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package basepb;
-option go_package = "github.com/ravinggo/game/common/basepb";
+option go_package = "testserver/proto/basepb";
 import "google/protobuf/descriptor.proto";
 
 /*
